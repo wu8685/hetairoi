@@ -1,0 +1,8 @@
+/bin/
+*.state.json
+cma-state.json
+/e2e/__pycache__/
+**/__pycache__/
+.pytest_cache/
+*.log
+.DS_Store
