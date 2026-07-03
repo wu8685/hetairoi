@@ -5,17 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// ghFakeAPI is a minimal GitHub REST stand-in for the source tests. issues is the
-// /issues listing; comments maps issue number -> its comment list (ascending).
+// ghFakeAPI is a minimal GitHub REST stand-in for the source tests.
 type ghFakeAPI struct {
 	me       string
-	issues   []map[string]any
-	comments map[int][]map[string]any
-	pulls    map[int]map[string]any
+	issues   []map[string]any         // /issues listing (issues + PRs)
+	comments map[int][]map[string]any // issue/PR number -> comments (ascending)
+	pulls    map[int]map[string]any   // PR number -> /pulls/{n} detail
 }
 
 func (f ghFakeAPI) server() *httptest.Server {
@@ -28,15 +28,11 @@ func (f ghFakeAPI) server() *httptest.Server {
 	})
 	mux.HandleFunc("/repos/o/r/issues/", func(w http.ResponseWriter, r *http.Request) {
 		// /repos/o/r/issues/{n}/comments
-		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/repos/o/r/issues/"), "/")
-		var n int
-		_, _ = fmtSscan(parts[0], &n)
+		n := pathNum(r.URL.Path, "/repos/o/r/issues/")
 		_ = json.NewEncoder(w).Encode(f.comments[n])
 	})
 	mux.HandleFunc("/repos/o/r/pulls/", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/repos/o/r/pulls/"), "/")
-		var n int
-		_, _ = fmtSscan(parts[0], &n)
+		n := pathNum(r.URL.Path, "/repos/o/r/pulls/")
 		body := f.pulls[n]
 		if body == nil {
 			body = map[string]any{}
@@ -46,148 +42,176 @@ func (f ghFakeAPI) server() *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
-func fmtSscan(s string, n *int) (int, error) {
-	v := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			break
-		}
-		v = v*10 + int(c-'0')
+// pathNum parses the first integer segment after prefix.
+func pathNum(path, prefix string) int {
+	seg := strings.SplitN(strings.TrimPrefix(path, prefix), "/", 2)[0]
+	n, _ := strconv.Atoi(seg)
+	return n
+}
+
+func newGHSource(base string) *GitHubSource {
+	// Proxy disabled: httptest is on 127.0.0.1 and this box's ambient http_proxy
+	// would otherwise hijack loopback (see local-loopback-proxy note).
+	return &GitHubSource{Repo: "o/r", Token: "t", APIBase: base,
+		HTTP: &http.Client{Transport: &http.Transport{Proxy: nil}}}
+}
+
+func eventsByType(evs []Event) map[string]Event {
+	m := map[string]Event{}
+	for _, e := range evs {
+		m[e.Type] = e
 	}
-	*n = v
-	return 1, nil
+	return m
 }
 
-func newGHSource(base string, f ghFakeAPI) *GitHubSource {
-	return &GitHubSource{Repo: "o/r", Token: "t", APIBase: base, HTTP: base2client()}
+func payloadOf(e Event) map[string]any {
+	var p map[string]any
+	_ = json.Unmarshal(e.Payload, &p)
+	return p
 }
 
-// base2client returns a client with the proxy explicitly disabled: the test's
-// httptest server is on 127.0.0.1, and this dev box's ambient http_proxy would
-// otherwise hijack loopback (see the local-loopback-proxy note).
-func base2client() *http.Client {
-	return &http.Client{Transport: &http.Transport{Proxy: nil}}
-}
-
-func idsOf(evs []Event) []string {
-	out := make([]string, len(evs))
-	for i, e := range evs {
-		out[i] = e.ID
-	}
-	return out
-}
-
-func TestGitHubSource_EmitsIssueAndPR(t *testing.T) {
+func TestGitHubSource_IssueEmitsWithLabelFlag(t *testing.T) {
 	f := ghFakeAPI{
-		me: "bot",
+		me: "wu8685",
 		issues: []map[string]any{
-			{"number": 1, "title": "a bug", "state": "open", "user": map[string]any{"login": "alice"},
-				"comments": 0, "updated_at": "2026-07-02T10:00:00Z", "created_at": "2026-07-02T09:00:00Z"},
-			{"number": 2, "title": "a pr", "state": "open", "user": map[string]any{"login": "bob"},
-				"comments": 0, "updated_at": "2026-07-02T10:05:00Z", "created_at": "2026-07-02T09:30:00Z",
+			{"number": 5, "title": "please build X", "state": "open",
+				"user": map[string]any{"login": "wu8685"}, "comments": 0,
+				"labels":     []map[string]any{{"name": "agent-build"}, {"name": "bug"}},
+				"updated_at": "2026-07-03T10:00:00Z"},
+		},
+	}
+	srv := f.server()
+	defer srv.Close()
+	evs, err := newGHSource(srv.URL).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(evs) != 1 || evs[0].Type != "issue" {
+		t.Fatalf("want 1 issue event, got %d: %+v", len(evs), evs)
+	}
+	p := payloadOf(evs[0])
+	if p["has_agent_build_label"] != true {
+		t.Errorf("has_agent_build_label = %v, want true", p["has_agent_build_label"])
+	}
+	if !strings.HasPrefix(evs[0].ID, "gh-issue-5-") {
+		t.Errorf("id = %q, want gh-issue-5-*", evs[0].ID)
+	}
+}
+
+func TestGitHubSource_PRPushAndReview(t *testing.T) {
+	f := ghFakeAPI{
+		me: "wu8685",
+		issues: []map[string]any{
+			{"number": 12, "title": "fix the thing", "state": "open",
+				"user": map[string]any{"login": "wu8685"}, "comments": 2,
+				"body":         "Implements the fix.\n\nFixes #5",
+				"updated_at":   "2026-07-03T11:00:00Z",
 				"pull_request": map[string]any{"url": "x"}},
 		},
-		pulls: map[int]map[string]any{2: {"head": map[string]any{"sha": "deadbeef", "ref": "feat"}, "base": map[string]any{"ref": "main"}}},
+		pulls: map[int]map[string]any{
+			12: {"head": map[string]any{"sha": "abc123", "ref": "agent/issue-5"},
+				"base": map[string]any{"ref": "main"}, "draft": false},
+		},
+		// Reviewer's verdict lives in the latest PR comment (single-account: no
+		// native self-approval), newest last.
+		comments: map[int][]map[string]any{
+			12: {
+				{"id": 100, "user": map[string]any{"login": "wu8685"}, "body": "looking..."},
+				{"id": 101, "user": map[string]any{"login": "wu8685"}, "body": "fix error handling\n\n<!-- cma-review:changes -->"},
+			},
+		},
 	}
 	srv := f.server()
 	defer srv.Close()
-	s := newGHSource(srv.URL, f)
-
-	evs, err := s.Fetch(context.Background())
+	evs, err := newGHSource(srv.URL).Fetch(context.Background())
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if len(evs) != 2 {
-		t.Fatalf("want 2 events, got %d: %v", len(evs), idsOf(evs))
+	byType := eventsByType(evs)
+	push, ok := byType["pr.push"]
+	if !ok {
+		t.Fatalf("no pr.push event; got %+v", evs)
 	}
-	byType := map[string]Event{}
-	for _, e := range evs {
-		byType[e.Type] = e
+	if push.ID != "gh-pr-12-push-abc123" {
+		t.Errorf("push id = %q, want gh-pr-12-push-abc123", push.ID)
 	}
-	if byType["issue"].Subject != "1" {
-		t.Errorf("issue subject = %q, want 1", byType["issue"].Subject)
+	pp := payloadOf(push)
+	if pp["is_agent_pr"] != true {
+		t.Errorf("is_agent_pr = %v, want true (head ref agent/…)", pp["is_agent_pr"])
 	}
-	if byType["pr"].Subject != "2" {
-		t.Errorf("pr subject = %q, want 2", byType["pr"].Subject)
+	if pp["issue_ref"] != "5" {
+		t.Errorf("issue_ref = %v, want 5 (parsed from 'Fixes #5')", pp["issue_ref"])
 	}
-	if !strings.HasPrefix(byType["issue"].ID, "gh-issue-1-") {
-		t.Errorf("issue ID = %q, want gh-issue-1-*", byType["issue"].ID)
+
+	rev, ok := byType["pr.review"]
+	if !ok {
+		t.Fatalf("no pr.review event; got %+v", evs)
 	}
-	if !strings.HasPrefix(byType["pr"].ID, "gh-pr-2-") {
-		t.Errorf("pr ID = %q, want gh-pr-2-*", byType["pr"].ID)
+	if rev.ID != "gh-pr-12-review-101" {
+		t.Errorf("review id = %q, want gh-pr-12-review-101 (latest verdict comment)", rev.ID)
 	}
-	// PR detail folded into payload.
-	var p map[string]any
-	_ = json.Unmarshal(byType["pr"].Payload, &p)
-	if p["head_sha"] != "deadbeef" {
-		t.Errorf("pr head_sha = %v, want deadbeef", p["head_sha"])
+	rp := payloadOf(rev)
+	if rp["review_verdict"] != "changes" {
+		t.Errorf("review_verdict = %v, want changes", rp["review_verdict"])
 	}
 }
 
-func TestGitHubSource_SelfTriggerGuard(t *testing.T) {
+func TestGitHubSource_NonAgentPRFlaggedFalse(t *testing.T) {
 	f := ghFakeAPI{
-		me: "bot",
+		me: "wu8685",
 		issues: []map[string]any{
-			// #1: latest comment is the bot's own → must be skipped.
-			{"number": 1, "title": "botlast", "state": "open", "user": map[string]any{"login": "alice"},
-				"comments": 2, "updated_at": "2026-07-02T12:00:00Z", "created_at": "2026-07-02T09:00:00Z"},
-			// #2: latest comment is a human → must emit.
-			{"number": 2, "title": "humanlast", "state": "open", "user": map[string]any{"login": "alice"},
-				"comments": 1, "updated_at": "2026-07-02T12:01:00Z", "created_at": "2026-07-02T09:00:00Z"},
+			{"number": 20, "title": "random human PR", "state": "open",
+				"user": map[string]any{"login": "someone"}, "comments": 0, "body": "no ref",
+				"updated_at": "2026-07-03T12:00:00Z", "pull_request": map[string]any{"url": "x"}},
+		},
+		pulls: map[int]map[string]any{
+			20: {"head": map[string]any{"sha": "def456", "ref": "feature-x"}, "base": map[string]any{"ref": "main"}},
+		},
+	}
+	srv := f.server()
+	defer srv.Close()
+	evs, err := newGHSource(srv.URL).Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	byType := eventsByType(evs)
+	if _, ok := byType["pr.review"]; ok {
+		t.Errorf("no review submitted → should be no pr.review event")
+	}
+	pp := payloadOf(byType["pr.push"])
+	if pp["is_agent_pr"] != false {
+		t.Errorf("is_agent_pr = %v, want false (head ref feature-x)", pp["is_agent_pr"])
+	}
+	if pp["issue_ref"] != "" {
+		t.Errorf("issue_ref = %v, want empty", pp["issue_ref"])
+	}
+}
+
+func TestGitHubSource_IssueMarkerGuardAndKinds(t *testing.T) {
+	f := ghFakeAPI{
+		me: "wu8685",
+		issues: []map[string]any{
+			{"number": 7, "title": "botlast", "state": "open", "user": map[string]any{"login": "wu8685"},
+				"comments": 1, "updated_at": "2026-07-03T13:00:00Z"},
 		},
 		comments: map[int][]map[string]any{
-			// newest comment carries the bot marker (same account as the human) → skip.
-			1: {
-				{"id": 10, "user": map[string]any{"login": "wu8685"}, "body": "help", "created_at": "2026-07-02T11:00:00Z", "updated_at": "2026-07-02T11:00:00Z"},
-				{"id": 11, "user": map[string]any{"login": "wu8685"}, "body": "on it\n<!-- cma-agent -->", "created_at": "2026-07-02T12:00:00Z", "updated_at": "2026-07-02T12:00:00Z"},
-			},
-			// newest comment has no marker (a human reply) → emit, even though the
-			// author is the same wu8685 account as the bot.
-			2: {
-				{"id": 20, "user": map[string]any{"login": "wu8685"}, "body": "still broken", "created_at": "2026-07-02T12:01:00Z", "updated_at": "2026-07-02T12:01:00Z"},
-			},
+			7: {{"id": 1, "user": map[string]any{"login": "wu8685"}, "body": "done\n<!-- cma-agent -->",
+				"created_at": "2026-07-03T13:00:00Z", "updated_at": "2026-07-03T13:00:00Z"}},
 		},
 	}
 	srv := f.server()
 	defer srv.Close()
-	s := newGHSource(srv.URL, f)
 
-	evs, err := s.Fetch(context.Background())
-	if err != nil {
-		t.Fatalf("Fetch: %v", err)
-	}
-	if len(evs) != 1 {
-		t.Fatalf("want 1 event (bot-last skipped), got %d: %v", len(evs), idsOf(evs))
-	}
-	if evs[0].Subject != "2" {
-		t.Errorf("emitted subject = %q, want 2 (the human-last issue)", evs[0].Subject)
-	}
-}
-
-func TestGitHubSource_AllowNumbersAndKinds(t *testing.T) {
-	mkIssues := func() []map[string]any {
-		return []map[string]any{
-			{"number": 1, "title": "i", "state": "open", "user": map[string]any{"login": "alice"}, "comments": 0, "updated_at": "2026-07-02T10:00:00Z"},
-			{"number": 2, "title": "p", "state": "open", "user": map[string]any{"login": "bob"}, "comments": 0, "updated_at": "2026-07-02T10:00:00Z", "pull_request": map[string]any{"url": "x"}},
-		}
-	}
-	f := ghFakeAPI{me: "bot", issues: mkIssues(), pulls: map[int]map[string]any{2: {}}}
-	srv := f.server()
-	defer srv.Close()
-
-	// Kinds=issue → only the issue.
-	s := newGHSource(srv.URL, f)
-	s.Kinds = "issue"
-	evs, _ := s.Fetch(context.Background())
-	if len(evs) != 1 || evs[0].Type != "issue" {
-		t.Fatalf("Kinds=issue: want 1 issue, got %v", idsOf(evs))
+	// Marker on the newest comment → issue event suppressed.
+	evs, _ := newGHSource(srv.URL).Fetch(context.Background())
+	if len(evs) != 0 {
+		t.Fatalf("marker guard: want 0 events, got %+v", evs)
 	}
 
-	// AllowNumbers={2} → only PR #2.
-	s2 := newGHSource(srv.URL, f)
-	s2.AllowNumbers = map[int]bool{2: true}
-	evs2, _ := s2.Fetch(context.Background())
-	if len(evs2) != 1 || evs2[0].Subject != "2" {
-		t.Fatalf("AllowNumbers={2}: want PR #2, got %v", idsOf(evs2))
+	// Kinds=pr → issues skipped entirely.
+	s := newGHSource(srv.URL)
+	s.Kinds = "pr"
+	if evs, _ := s.Fetch(context.Background()); len(evs) != 0 {
+		t.Fatalf("Kinds=pr should skip the issue, got %+v", evs)
 	}
 }

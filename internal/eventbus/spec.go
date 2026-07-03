@@ -38,14 +38,17 @@ type SourceSpec struct {
 	VersionField string   `json:"version_field,omitempty"`
 
 	// GitHub fields (Type == "github"). State is reused (open|closed|all).
-	Repo           string `json:"repo,omitempty"`             // "owner/name"
-	Kinds          string `json:"kinds,omitempty"`            // both | issue | pr
-	AllowNumbers   []int  `json:"allow_numbers,omitempty"`    // blast-radius guard
-	TokenFile      string `json:"token_file,omitempty"`       // path to the PAT file (secret stays out of the spec)
-	APIBase        string `json:"api_base,omitempty"`         // default https://api.github.com
-	IssueEventType string `json:"issue_event_type,omitempty"` // emitted Event.Type for issues (default "issue")
-	PREventType    string `json:"pr_event_type,omitempty"`    // emitted Event.Type for PRs (default "pr")
-	BotMarker      string `json:"bot_marker,omitempty"`       // self-trigger guard marker (default "<!-- cma-agent -->")
+	Repo            string `json:"repo,omitempty"`              // "owner/name"
+	Kinds           string `json:"kinds,omitempty"`             // both | issue | pr
+	AllowNumbers    []int  `json:"allow_numbers,omitempty"`     // blast-radius guard
+	TokenFile       string `json:"token_file,omitempty"`        // path to the PAT file (secret stays out of the spec)
+	APIBase         string `json:"api_base,omitempty"`          // default https://api.github.com
+	IssueEventType  string `json:"issue_event_type,omitempty"`  // emitted type for issues (default "issue")
+	PushEventType   string `json:"push_event_type,omitempty"`   // emitted type for PR commits (default "pr.push")
+	ReviewEventType string `json:"review_event_type,omitempty"` // emitted type for PR reviews (default "pr.review")
+	BuildLabel      string `json:"build_label,omitempty"`       // label opting an issue into the loop (default "agent-build")
+	AgentPrefix     string `json:"agent_prefix,omitempty"`      // head-branch prefix marking a loop PR (default "agent/")
+	BotMarker       string `json:"bot_marker,omitempty"`        // issue-comment self-trigger marker (default "<!-- cma-agent -->")
 }
 
 // HandlerSpec is the JSON-serializable declaration of a subscription — the body

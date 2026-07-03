@@ -233,7 +233,10 @@ func buildFetch(spec SourceSpec) (FetchFunc, error) {
 			State:        spec.State,
 			Kinds:        spec.Kinds,
 			IssueType:    spec.IssueEventType,
-			PRType:       spec.PREventType,
+			PushType:     spec.PushEventType,
+			ReviewType:   spec.ReviewEventType,
+			BuildLabel:   spec.BuildLabel,
+			AgentPrefix:  spec.AgentPrefix,
 			BotMarker:    spec.BotMarker,
 			AllowNumbers: allow,
 			since:        time.Now(), // don't replay history on (re)start; act on new activity only

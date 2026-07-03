@@ -75,47 +75,57 @@ one re-triggers — same contract as `codehub-pr`.
 
 ### `github` source
 
-Polls the GitHub REST API for a repo's **issues and pull requests** and emits one
-event per updated item — reacting to create / edit / comment / state changes. The
-`/issues` endpoint returns both issues and PRs (PRs carry a `pull_request` field);
-PRs are enriched with an extra `GET /pulls/{n}` (head sha, base ref, draft,
-mergeable). Emits `Event.Type` = `issue` or `pr`, `Subject` = the number.
+Polls the GitHub REST API for a repo's issues + PRs and emits **three typed
+events**, purpose-built for the issue → code → PR → review → fix loop. Each event
+type has its own dedup key so a transition fires exactly once:
 
-| field              | meaning                                                             |
-|--------------------|---------------------------------------------------------------------|
-| `repo`             | `owner/name` (required)                                             |
-| `kinds`            | `both` (default) \| `issue` \| `pr`                                 |
-| `state`            | `open` (default) \| `closed` \| `all`                               |
-| `allow_numbers`    | if set, only these issue/PR numbers are emitted (blast-radius guard)|
-| `interval`         | Go duration, default `30s`                                          |
-| `token_file`       | path to a file holding the PAT (else `GITHUB_TOKEN`/`GH_TOKEN` env) |
-| `bot_marker`       | self-trigger marker, default `<!-- cma-agent -->`                   |
-| `issue_event_type` | emitted type for issues, default `issue`                            |
-| `pr_event_type`    | emitted type for PRs, default `pr`                                  |
-| `api_base`         | default `https://api.github.com` (override for GHE / tests)         |
+| event type | dedup `Event.ID`             | fires when                          |
+|------------|------------------------------|-------------------------------------|
+| `issue`    | `gh-issue-<n>-<activity>`    | a (labeled) issue changed           |
+| `pr.push`  | `gh-pr-<n>-push-<head_sha>`  | new commits on a PR (open/sync)     |
+| `pr.review`| `gh-pr-<n>-review-<comment>` | a reviewer verdict comment appeared |
 
-**Auth.** A token is **required** (the secret is read from `token_file`, never
-stored in the persisted spec): unauthenticated polling is capped at 60 req/hr, and
-the self-trigger guard needs `GET /user`. A fine-grained PAT needs, on the target
-repo: **Contents: Read** (clone), **Issues: Read and write** + **Pull requests:
-Read and write** (to comment). Add **Contents: Read and write** only when moving
-past dry-run to pushing branches / opening PRs.
+`Subject` = the issue/PR number. Payload carries the routing fields handlers match
+on with `payload_equals`: `has_agent_build_label`, `is_agent_pr` (head branch
+starts with `agent_prefix`), `issue_ref` (parsed from the PR body's `Fixes #N`),
+`review_verdict` (`approved`/`changes`, parsed from the verdict marker).
 
-**Version / dedup.** `Event.ID` = `gh-<kind>-<number>-<latestActivityUnixNano>`,
-where the activity time is `max(updated_at, newest-comment time)`. So any change
-(edit, new comment, state change) bumps `updated_at` → a fresh ID → exactly one
-new turn; an unchanged item is deduped. Keyed by number, repeated events on one
-item reuse the same session.
+| field               | meaning                                                          |
+|---------------------|------------------------------------------------------------------|
+| `repo`              | `owner/name` (required)                                          |
+| `kinds`             | `both` (default) \| `issue` \| `pr`                              |
+| `state`             | `open` (default) \| `closed` \| `all`                           |
+| `allow_numbers`     | if set, only these numbers are emitted (blast-radius guard)      |
+| `interval`          | Go duration, default `30s`                                       |
+| `token_file`        | path to a file holding the PAT (else `GITHUB_TOKEN`/`GH_TOKEN`)  |
+| `build_label`       | label that opts an issue into the loop, default `agent-build`    |
+| `agent_prefix`      | head-branch prefix marking a loop PR, default `agent/`           |
+| `bot_marker`        | issue-comment self-trigger marker, default `<!-- cma-agent -->`  |
+| `issue_event_type`  | default `issue`                                                  |
+| `push_event_type`   | default `pr.push`                                                |
+| `review_event_type` | default `pr.review`                                              |
+| `api_base`          | default `https://api.github.com` (override for GHE / tests)      |
 
-**Self-trigger guard (marker-based).** The acting agent stamps every comment with
-`bot_marker`. An item whose **newest comment carries the marker** is skipped — so
-the agent's own replies don't re-trigger it. This is intentionally marker-based,
-not author-based: the PAT owner and the human operator are usually the **same**
-GitHub account, so an author check would also swallow the operator's own comments.
-The agent's system prompt MUST append the marker to every comment it posts.
+**Auth.** A token is **required** (read from `token_file`, never stored in the
+persisted spec): unauthenticated polling is capped at 60 req/hr, and the source
+resolves the bot login via `GET /user`. For a full coding loop the PAT needs, on
+the target repo: **Contents + Issues + Pull requests: Read and write** (clone,
+push, open PRs, comment). Probe write access first with a temp-branch create/delete.
 
-**No boot replay.** On (re)start the source's window begins at `now`, so it acts
-only on activity *after* startup — a restart never replays historical items.
+**Routing without author identity (single-account safe).** The coder only ever
+produces `pr.push`, the reviewer only ever produces `pr.review`, so routing on the
+event *type* never self-triggers even when both act as the same GitHub account.
+GitHub blocks approving your own PR, so the reviewer posts a verdict as a PR
+comment ending with `<!-- cma-review:approved -->` or `<!-- cma-review:changes -->`
+and the source exposes it as `review_verdict`. The `issue` event keeps a
+`bot_marker` guard (skip when the newest comment carries the marker) so an agent
+comment on an issue doesn't re-trigger it.
+
+**No boot replay.** On (re)start the window begins at `now`, so the source acts
+only on activity *after* startup — a restart never replays history.
+
+See [`tools/DEV-LOOP-PLAYBOOK.md`](../tools/DEV-LOOP-PLAYBOOK.md) (+ `tools/setup-dev-loop.py`,
+`tools/ui-verify.py`) for the full agent/handler formation this source drives.
 
 ## Dynamic control plane
 
