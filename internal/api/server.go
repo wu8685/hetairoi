@@ -26,7 +26,17 @@ type Server struct {
 
 	eventBus *eventbus.Bus      // optional; mounts the webhook when set
 	eventReg *eventbus.Registry // optional; mounts the dynamic sources/handlers API
+
+	// externalAgents = agents live outside this process's store (SDK-driver
+	// mode: the eventbus drives an external CMA facade). When set, handler
+	// creation skips the local agent-existence check.
+	externalAgents bool
 }
+
+// SetExternalAgents marks that agents are owned by an external CMA facade (not
+// this Server's store), so eventbus handler creation must not validate agent_id
+// against the local store. Call when wiring the SDK eventbus driver.
+func (s *Server) SetExternalAgents(v bool) { s.externalAgents = v }
 
 // SetEventBus mounts an event bus, exposing its webhook at POST /eventbus/events
 // (behind the same x-api-key gate as the CMA API in v1). Call before Handler().

@@ -44,6 +44,7 @@ func main() {
 			log.Fatalf("CMA_EVENTBUS_DRIVER=sdk requires CMA_FACADE_URL (the ahsir CMA facade base URL)")
 		}
 		driver = sdkdriver.New(facadeURL, os.Getenv("CMA_API_KEY"))
+		srv.SetExternalAgents(true) // agents live on the facade, not the local store
 		log.Printf("eventbus driver: sdk (facade=%s)", facadeURL)
 	}
 	bus := eventbus.New(driver, busDir, 8)
