@@ -38,7 +38,7 @@ type SessionSummary struct {
 	Archived     bool
 }
 
-// SessionDriver is how the bus drives the agent runtime (cma-service). The bus
+// SessionDriver is how the bus drives the agent runtime (hetairoi). The bus
 // depends only on this interface, so it is unit-tested against a fake.
 type SessionDriver interface {
 	CreateSession(agent AgentRef, envID string) (sessionID string, err error)

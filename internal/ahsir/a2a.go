@@ -20,8 +20,8 @@ import (
 var ErrTurnCanceled = errors.New("turn canceled")
 
 // These minimal types mirror the a2a-go wire shapes (github.com/a2aproject/
-// a2a-go/a2a) for exactly the fields cma-service produces/consumes — kept
-// hand-rolled so cma-service stays stdlib-only. Verified against a2a-go v0.3.15.
+// a2a-go/a2a) for exactly the fields hetairoi produces/consumes — kept
+// hand-rolled so hetairoi stays stdlib-only. Verified against a2a-go v0.3.15.
 
 type a2aTextPart struct {
 	Kind string `json:"kind"` // "text"
@@ -87,7 +87,7 @@ type a2aEvent struct {
 }
 
 // StreamEvent is a structured (non-text) event the agent surfaces mid-turn,
-// carried as an A2A DataPart. It is a neutral carrier — cma-service maps it to
+// carried as an A2A DataPart. It is a neutral carrier — hetairoi maps it to
 // the CMA observability events (tool_use / mcp_tool_use / span.*). Kind is the
 // DataPart's "ev" discriminator.
 type StreamEvent struct {

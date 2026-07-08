@@ -1,4 +1,4 @@
-// Package config loads cma-service configuration from the environment.
+// Package config loads hetairoi configuration from the environment.
 package config
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 type Config struct {
-	// Listen is the cma-service HTTP bind address.
+	// Listen is the hetairoi HTTP bind address.
 	Listen string
 	// AhsirURL is the ahsir scheduler gateway root.
 	AhsirURL string
@@ -55,7 +55,7 @@ func Load() Config {
 }
 
 // resolveAhsirAdminToken discovers the ahsir control-plane token the same way
-// the ahsir CLI does, so a local same-user cma-service needs zero token wiring:
+// the ahsir CLI does, so a local same-user hetairoi needs zero token wiring:
 //
 //	1. CMA_AHSIR_ADMIN_TOKEN  — explicit override
 //	2. AHSIR_ADMIN_TOKEN      — the env the scheduler itself reads

@@ -14,7 +14,7 @@ import (
 // Registry is the control plane for dynamic sources and handlers. It compiles
 // JSON specs into live Subscriptions (registered on the Bus) and running Sources
 // (poller goroutines), persists the specs, and rebuilds them on boot so a
-// long-running cma-service keeps its configured event wiring across restarts.
+// long-running hetairoi keeps its configured event wiring across restarts.
 //
 // One file holds all specs: <dir>/eventbus/_registry.json.
 type Registry struct {

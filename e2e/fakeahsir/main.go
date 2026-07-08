@@ -1,7 +1,7 @@
 // Command fakeahsir is a minimal stand-in for the ahsir scheduler gateway, used
-// by the e2e suite so the official Anthropic SDK can drive cma-service end-to-end
+// by the e2e suite so the official Anthropic SDK can drive hetairoi end-to-end
 // without a real ahsir fleet or a live LLM. It implements exactly the endpoints
-// cma-service depends on:
+// hetairoi depends on:
 //
 //	POST   /admin/agents                      register an agent (inline card) -> 201
 //	DELETE /admin/agents/{name}               stop an agent -> 204

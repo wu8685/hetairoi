@@ -3,12 +3,12 @@
 This extends [`EVENTBUS-SPEC.md`](EVENTBUS-SPEC.md) (handlers, policies, dedup,
 webhook) with two capabilities:
 
-1. **Poll sources** — the *pull* counterpart to the webhook, so cma-service can
+1. **Poll sources** — the *pull* counterpart to the webhook, so hetairoi can
    ingest events from upstreams that can't call us (e.g. an CodeHub project).
 2. **A runtime control plane** — `POST/GET/DELETE /v1/eventbus/{sources,handlers}`
    so monitoring is configured with HTTP requests, not recompiled-in Go.
 
-Both are mounted by `cmd/cma-service` (built-in). Worked example:
+Both are mounted by `cmd/hetairoi` (built-in). Worked example:
 [`example/eventbus-dynamic`](../example/eventbus-dynamic). The compiled-in
 counterpart is [`example/pr-review`](../example/pr-review).
 
@@ -139,7 +139,7 @@ See [`tools/DEV-LOOP-PLAYBOOK.md`](../tools/DEV-LOOP-PLAYBOOK.md) (+ `tools/setu
 | `DELETE /v1/eventbus/handlers/{name}`| unregister + forget                   |
 
 Specs are persisted to `<state-dir>/eventbus/_registry.json` and **rebuilt on
-boot** (handlers first, then sources), so a long-running cma-service keeps its
+boot** (handlers first, then sources), so a long-running hetairoi keeps its
 wiring across restarts.
 
 ### Declarative handlers (no closures)
@@ -182,7 +182,7 @@ the **Bash** tool. ahsir deliberately withholds Bash from claude agents — the
 write access), and `--dangerously-skip-permissions` is stripped from raw args.
 
 The sanctioned widening is the **`filesystem.shell_access`** card knob (added in
-ahsir). cma-service maps agent **metadata** to it:
+ahsir). hetairoi maps agent **metadata** to it:
 
 | agent metadata key | card field             | effect                         |
 |--------------------|------------------------|--------------------------------|
@@ -199,7 +199,7 @@ Without `shell_access` the agent can read/edit files but cannot run `git` or
 
 ## Admin token
 
-cma-service auto-discovers the ahsir control-plane token like the ahsir CLI:
+hetairoi auto-discovers the ahsir control-plane token like the ahsir CLI:
 `CMA_AHSIR_ADMIN_TOKEN` → `AHSIR_ADMIN_TOKEN` → the `admin-token` file beside the
 ahsir config (`CMA_AHSIR_CONFIG`, default `~/.ahsir/admin-token`). For a local
 same-user setup, no token wiring is needed.

@@ -9,7 +9,7 @@ import (
 // Source is an event-ingestion source. It runs until ctx is cancelled, pushing
 // events into the bus it was built against. WebhookHandler is the push
 // counterpart (the caller delivers events); Source is the pull counterpart (the
-// source fetches them). Built-in sources let cma-service ingest events from
+// source fetches them). Built-in sources let hetairoi ingest events from
 // upstreams that cannot call our webhook (e.g. an CodeHub project polled over
 // its CLI).
 type Source interface {

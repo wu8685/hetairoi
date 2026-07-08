@@ -1,5 +1,5 @@
 // Package sdkdriver implements eventbus.SessionDriver by driving ahsir's CMA API
-// through the official anthropic-sdk-go. It makes cma-service a CMA *client* of
+// through the official anthropic-sdk-go. It makes hetairoi a CMA *client* of
 // ahsir (migration P2, decision B1: dogfood the same wire the SDK certifies)
 // instead of reaching into an in-process gateway.
 package sdkdriver
@@ -12,7 +12,7 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/wu8685/cma-service/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/eventbus"
 )
 
 const summaryTrunc = 200

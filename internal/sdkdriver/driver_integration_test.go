@@ -14,13 +14,13 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/wu8685/cma-service/internal/eventbus"
-	"github.com/wu8685/cma-service/internal/sdkdriver"
+	"github.com/wu8685/hetairoi/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/sdkdriver"
 )
 
 // TestIntegrationSDKDriver boots a real ahsir (scheduler + CMA facade, echo
 // provider) and drives it through the SDK-backed eventbus.SessionDriver — the
-// migration P2 dogfood: cma-service talking CMA to ahsir via the official SDK.
+// migration P2 dogfood: hetairoi talking CMA to ahsir via the official SDK.
 //
 // Skipped under -short or when the ahsir repo isn't present. The ahsir binaries
 // are built from the sibling ahsir checkout (branch feat/cma-facade) and
@@ -115,7 +115,7 @@ func ahsirRepoPath(t *testing.T) string {
 	if p := os.Getenv("AHSIR_REPO"); p != "" {
 		return p
 	}
-	wd, _ := os.Getwd() // .../cma-service/internal/sdkdriver
+	wd, _ := os.Getwd() // .../hetairoi/internal/sdkdriver
 	return filepath.Clean(filepath.Join(wd, "..", "..", "..", "ahsir"))
 }
 

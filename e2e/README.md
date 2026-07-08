@@ -1,12 +1,12 @@
-# cma-service e2e
+# hetairoi e2e
 
-End-to-end tests that drive cma-service with the **official `anthropic` Python
+End-to-end tests that drive hetairoi with the **official `anthropic` Python
 SDK** (the same client real users point at the service), exercising everyday
 agent use cases.
 
 The suite is self-contained: it boots a **fake ahsir** (`e2e/fakeahsir`, a tiny
-Go stand-in returning deterministic chat replies) and **cma-service** — both via
-`go run` — then runs the SDK against cma-service. No real ahsir and no live LLM
+Go stand-in returning deterministic chat replies) and **hetairoi** — both via
+`go run` — then runs the SDK against hetairoi. No real ahsir and no live LLM
 required, so it is deterministic and CI-friendly.
 
 ## Scenarios
@@ -36,12 +36,12 @@ provider:
 CMA_E2E_AHSIR_URL=http://127.0.0.1:9800 ./e2e/run.sh
 ```
 
-The fake-ahsir fixture is skipped; cma-service talks to your ahsir, and replies
+The fake-ahsir fixture is skipped; hetairoi talks to your ahsir, and replies
 come from the real LLM (adjust assertions that expect the fake's `Echo …` text).
 
 ## How it works
 
 `conftest.py` provides session-scoped fixtures that launch both processes on free
 ports, wait for readiness, and hand back an `anthropic.Anthropic` client with
-`base_url` pointed at cma-service (and `trust_env=False` to bypass the corporate
+`base_url` pointed at hetairoi (and `trust_env=False` to bypass the corporate
 proxy for localhost). Logs land in `/tmp/cma-e2e-*.log`.

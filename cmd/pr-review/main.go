@@ -1,4 +1,4 @@
-// Command pr-review runs cma-service with a built-in CodeHub PR poller
+// Command pr-review runs hetairoi with a built-in CodeHub PR poller
 // wired to an ahsir-backed code-review agent.
 //
 // Flow:
@@ -25,12 +25,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/api"
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/config"
-	"github.com/wu8685/cma-service/internal/eventbus"
-	"github.com/wu8685/cma-service/internal/store"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/api"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/config"
+	"github.com/wu8685/hetairoi/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/store"
 )
 
 const reviewSystemPrompt = `You are a senior Go / Kubernetes code reviewer for the CodeHub project ` +

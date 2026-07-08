@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/store"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/store"
 )
 
 func TestNormalizeAgent(t *testing.T) {

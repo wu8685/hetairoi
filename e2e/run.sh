@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the cma-service e2e suite. Boots fakeahsir + cma-service (via `go run`) and
+# Run the hetairoi e2e suite. Boots fakeahsir + hetairoi (via `go run`) and
 # drives them with the official Anthropic SDK. Needs `go` and Python deps
 # (see requirements.txt).
 #

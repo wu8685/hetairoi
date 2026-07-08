@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pr-review end-to-end: boot an ISOLATED, token-free ahsir scheduler +
-# cma-service with the built-in CodeHub PR poller, scoped to one PR (REVIEW_IID,
+# hetairoi with the built-in CodeHub PR poller, scoped to one PR (REVIEW_IID,
 # default 3177). A matching review agent (Claude runtime, shell_access) reviews
 # the PR over the codehub CLI and posts a comment / approve — REAL writes.
 #
@@ -63,7 +63,7 @@ echo "--- 1. build + start ahsir scheduler ($AHSIR_PORT) ---"
 ( cd "$AHSIR" && GO111MODULE=on go build -o bin/ahsir ./cmd/ahsir && GO111MODULE=on go build -o bin/ahsir-agent ./cmd/ahsir-agent )
 # `ahsir start <config>` resolves its admin token as: AHSIR_ADMIN_TOKEN env →
 # existing admin-token file → auto-generate. We export one shared value so the
-# scheduler, the UI, and cma-service all agree without anyone reading a file.
+# scheduler, the UI, and hetairoi all agree without anyone reading a file.
 export AHSIR_ADMIN_TOKEN="${AHSIR_ADMIN_TOKEN:-local-token}"
 "$AHSIR/bin/ahsir" start "$RUN/ahsir.yaml" > "$RUN/ahsir.log" 2>&1 &
 SCHED_PID=$!

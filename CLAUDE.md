@@ -1,4 +1,4 @@
-# cma-service — agent orientation
+# hetairoi — agent orientation
 
 This project is a **gateway** that exposes an **Anthropic Managed Agents (CMA)
 compatible HTTP API**, backed internally by an [ahsir](https://github.com/wu8685/ahsir)
@@ -12,7 +12,7 @@ how to verify wire shapes). `README.md` is the short version.
 ## Repo map
 
 ```
-cmd/cma-service/      entrypoint
+cmd/hetairoi/      entrypoint
 internal/cma/         CMA wire types (the external API surface) + ids
 internal/ahsir/       ahsir gateway client + inline AgentCard
 internal/translate/   CMA agent → ahsir card; (agent_id,version) → ahsir name
@@ -29,9 +29,9 @@ e2e/                  official-SDK end-to-end tests + fakeahsir backend
 ```sh
 GO111MODULE=on go build ./...        # compile check
 GO111MODULE=on go vet ./...
-GO111MODULE=on go run ./cmd/cma-service   # run the server (not a built binary)
+GO111MODULE=on go run ./cmd/hetairoi   # run the server (not a built binary)
 python3 -m pip install -r e2e/requirements.txt
-./e2e/run.sh                          # official-SDK e2e (boots fakeahsir + cma-service via go run)
+./e2e/run.sh                          # official-SDK e2e (boots fakeahsir + hetairoi via go run)
 ```
 
 ## Constraints that matter
@@ -44,7 +44,7 @@ python3 -m pip install -r e2e/requirements.txt
    ahsir agent `cma-<id>-v<n>`. ahsir is version-agnostic.
 3. **Any ahsir-side change is discussed with the ahsir maintainer first.** ahsir stays a pure agent
    runtime. The one pending ahsir change (inline agent registration) is specced in
-   `docs/ROADMAP.md`; cma-service already speaks that contract.
+   `docs/ROADMAP.md`; hetairoi already speaks that contract.
 4. **`e2e/` must stay green.** It's the contract check against the real SDK.
 
 ## Current status

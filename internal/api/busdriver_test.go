@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/eventbus"
 )
 
 // a2aWithReply is an ahsir stand-in: admin register + a streaming turn that
@@ -91,7 +91,7 @@ func TestBusDriver_SummaryFromLog(t *testing.T) {
 	}
 }
 
-// End to end: webhook → bus → driver → a real cma-service session → ahsir.
+// End to end: webhook → bus → driver → a real hetairoi session → ahsir.
 func TestEventBusWebhook_EndToEnd(t *testing.T) {
 	srv := a2aWithReply(t, "handled")
 	defer srv.Close()

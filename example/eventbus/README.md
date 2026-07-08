@@ -3,11 +3,11 @@
 An ops-alert auto-handling chain, top to bottom:
 
 ```
-webhook (alert) ──► eventbus handler ──► cma-service session ──► ahsir agent ──► real shell commands
+webhook (alert) ──► eventbus handler ──► hetairoi session ──► ahsir agent ──► real shell commands
    POST /eventbus/events        Keyed: one session per subject (incident)        df / ls / cat ...
 ```
 
-- **`cmd/eventbus-example`** runs cma-service with an event bus. At startup it
+- **`cmd/eventbus-example`** runs hetairoi with an event bus. At startup it
   seeds an `ops-responder` agent + an `ops` environment, and registers one
   handler (`ops-alerts`, **Keyed** by `subject`): every `alert` event routes to a
   session for that subject and prompts the agent to investigate.

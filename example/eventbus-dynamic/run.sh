@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase-2 (dynamic control plane) end-to-end: boot the REAL cma-service (which
+# Phase-2 (dynamic control plane) end-to-end: boot the REAL hetairoi (which
 # mounts the event-bus registry) + an isolated ahsir, then wire the CodeHub PR
 # review entirely over HTTP — create the agent, the source, and the handler with
 # curl/urllib, no compiled-in wiring. Proves /v1/eventbus/{sources,handlers}.
@@ -39,7 +39,7 @@ cleanup() {
   [ -n "${APP_PID:-}" ]   && kill "$APP_PID"   2>/dev/null || true
   [ -n "${SCHED_PID:-}" ] && kill "$SCHED_PID" 2>/dev/null || true
   pkill -f "registry http://127.0.0.1:$AHSIR_PORT" 2>/dev/null || true
-  pkill -f "exe/cma-service" 2>/dev/null || true
+  pkill -f "exe/hetairoi" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -60,14 +60,14 @@ done
 "$AHSIR/bin/ahsir" ui --addr "127.0.0.1:$UI_PORT" --scheduler "http://127.0.0.1:$AHSIR_PORT" > "$RUN/ui.log" 2>&1 & UI_PID=$!
 echo ">>> ahsir UI: http://127.0.0.1:$UI_PORT"
 
-echo "--- 2. start REAL cma-service ($APP_PORT) with the eventbus registry ---"
-# cma-service auto-discovers the admin token from AHSIR_ADMIN_TOKEN (Phase-2 #2).
+echo "--- 2. start REAL hetairoi ($APP_PORT) with the eventbus registry ---"
+# hetairoi auto-discovers the admin token from AHSIR_ADMIN_TOKEN (Phase-2 #2).
 GO111MODULE=on \
   CMA_LISTEN=127.0.0.1:$APP_PORT CMA_AHSIR_URL=http://127.0.0.1:$AHSIR_PORT \
   CMA_RUNTIME_PROVIDER=anthropic CMA_STATE_FILE="$RUN/state.json" \
-  go run "$REPO/cmd/cma-service" > "$RUN/app.log" 2>&1 & APP_PID=$!
+  go run "$REPO/cmd/hetairoi" > "$RUN/app.log" 2>&1 & APP_PID=$!
 for _ in $(seq 1 30); do
-  kill -0 "$APP_PID" 2>/dev/null || { echo "cma-service died:"; cat "$RUN/app.log"; exit 1; }
+  kill -0 "$APP_PID" 2>/dev/null || { echo "hetairoi died:"; cat "$RUN/app.log"; exit 1; }
   curl -sf "http://127.0.0.1:$APP_PORT/v1/agents" >/dev/null 2>&1 && break; sleep 0.5
 done
 

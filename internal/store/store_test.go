@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/cma"
+	"github.com/wu8685/hetairoi/internal/cma"
 )
 
 func newTestStore(t *testing.T) *Store {

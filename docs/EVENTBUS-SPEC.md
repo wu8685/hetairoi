@@ -1,6 +1,6 @@
 # Event Bus — Spec
 
-> Status: **draft for review** · Target: `internal/eventbus` (in-process package of cma-service)
+> Status: **draft for review** · Target: `internal/eventbus` (in-process package of hetairoi)
 > Development: **TDD** — the acceptance scenarios in §12 are the test list.
 
 ## 1. Purpose
@@ -19,9 +19,9 @@ deferred to after custom tools, see §11).
 
 ## 2. Boundary
 
-- A **Go package** inside cma-service with its own external interface (webhook).
+- A **Go package** inside hetairoi with its own external interface (webhook).
 - In-process: it drives sessions through a **SessionDriver** interface that
-  cma-service implements over its existing session/turn machinery — no HTTP
+  hetairoi implements over its existing session/turn machinery — no HTTP
   self-loop. The bus depends only on the interface (testable against a fake).
 
 ```go
@@ -156,7 +156,7 @@ ingest(e):
 ```
 
 - `resolve` is the only policy-specific step; everything else is shared.
-- Same-session turn ordering is **guaranteed by cma-service** (per-session FIFO
+- Same-session turn ordering is **guaranteed by hetairoi** (per-session FIFO
   turn serialization already exists) — the bus does not need its own per-session
   queue. The bus only serializes its own dispatch enough to preserve send order
   for a given session (single dispatch path per subject; see §10).
@@ -185,7 +185,7 @@ so it lights up when D lands.
 ## 10. Concurrency & ordering
 
 - Events for **different** sessions dispatch concurrently.
-- Events for the **same** Keyed/Routed session: cma-service serializes the turns,
+- Events for the **same** Keyed/Routed session: hetairoi serializes the turns,
   so correctness holds even if dispatch races. To also preserve *order*, the bus
   serializes dispatch per resolved session (or per Subject) — a single in-flight
   resolve+send per session. Routed adds a wrinkle: the router call is slow (an

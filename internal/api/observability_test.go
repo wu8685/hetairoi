@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/store"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/store"
 )
 
 // dataPartA2A returns an httptest A2A server whose message/stream emits the given

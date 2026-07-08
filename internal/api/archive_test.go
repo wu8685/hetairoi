@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/store"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/store"
 )
 
 // TestArchiveSessionRefcountedGC verifies the shared ahsir agent is reclaimed

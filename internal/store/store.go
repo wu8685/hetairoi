@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/cma"
+	"github.com/wu8685/hetairoi/internal/cma"
 )
 
 // AgentRecord keeps every immutable version of one agent.

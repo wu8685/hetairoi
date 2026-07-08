@@ -3,7 +3,7 @@ package translate
 import (
 	"testing"
 
-	"github.com/wu8685/cma-service/internal/cma"
+	"github.com/wu8685/hetairoi/internal/cma"
 )
 
 func TestAhsirAgentName(t *testing.T) {

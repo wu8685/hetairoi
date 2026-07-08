@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/store"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/store"
 )
 
 // waitForEvent polls the session log (lock-safe) until pred is satisfied.

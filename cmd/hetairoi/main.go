@@ -1,4 +1,4 @@
-// Command cma-service exposes an Anthropic Managed Agents (CMA) compatible API
+// Command hetairoi exposes an Anthropic Managed Agents (CMA) compatible API
 // backed by an ahsir agent fleet.
 package main
 
@@ -9,12 +9,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/api"
-	"github.com/wu8685/cma-service/internal/config"
-	"github.com/wu8685/cma-service/internal/eventbus"
-	"github.com/wu8685/cma-service/internal/sdkdriver"
-	"github.com/wu8685/cma-service/internal/store"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/api"
+	"github.com/wu8685/hetairoi/internal/config"
+	"github.com/wu8685/hetairoi/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/sdkdriver"
+	"github.com/wu8685/hetairoi/internal/store"
 )
 
 func main() {
@@ -54,7 +54,7 @@ func main() {
 	}
 	srv.SetEventRegistry(reg)
 
-	log.Printf("cma-service listening on %s (ahsir=%s, state=%s)", cfg.Listen, cfg.AhsirURL, cfg.StateFile)
+	log.Printf("hetairoi listening on %s (ahsir=%s, state=%s)", cfg.Listen, cfg.AhsirURL, cfg.StateFile)
 	if err := http.ListenAndServe(cfg.Listen, srv.Handler()); err != nil {
 		log.Fatalf("serve: %v", err)
 	}

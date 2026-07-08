@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/wu8685/cma-service/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/eventbus"
 )
 
 // Event-bus control plane: create/list/delete sources and handlers at runtime.

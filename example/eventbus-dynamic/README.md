@@ -3,10 +3,10 @@
 Same outcome as [`../pr-review`](../pr-review) — an CodeHub PR gets
 reviewed by an ahsir agent that comments / approves over the `codehub` CLI — but
 **nothing is wired in Go**. The agent, the event source, and the handler are all
-created at runtime over HTTP against the stock `cmd/cma-service`:
+created at runtime over HTTP against the stock `cmd/hetairoi`:
 
 ```
-cmd/cma-service (mounts the eventbus registry)
+cmd/hetairoi (mounts the eventbus registry)
    POST /v1/agents                  → create the review agent (shell_access)
    POST /v1/eventbus/sources        → codehub-pr poller for the repo
    POST /v1/eventbus/handlers       → keyed handler: one session per PR
@@ -17,7 +17,7 @@ cmd/cma-service (mounts the eventbus registry)
 ```
 
 This is the **Phase-2** path: add a new repo/handler to a long-running
-cma-service with a request, not a redeploy. Specs are persisted to
+hetairoi with a request, not a redeploy. Specs are persisted to
 `<state-dir>/eventbus/_registry.json` and rebuilt on the next boot.
 
 ## Run
@@ -28,7 +28,7 @@ REVIEW_IID=3179 ./run.sh   # a different PR
 ```
 
 It boots an isolated ahsir (`19800`, with its web UI on `19801`) + the real
-`cma-service` (`18790`), then drives the whole chain over HTTP and streams the
+`hetairoi` (`18790`), then drives the whole chain over HTTP and streams the
 agent's `tool_use` / comments / approve. Watch live at <http://127.0.0.1:19801>.
 
 ⚠️ These are **real writes** to a shared repo (a comment and an `codehub pr

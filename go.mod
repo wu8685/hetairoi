@@ -1,4 +1,4 @@
-module github.com/wu8685/cma-service
+module github.com/wu8685/hetairoi
 
 go 1.24
 

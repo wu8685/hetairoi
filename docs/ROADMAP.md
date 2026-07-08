@@ -1,9 +1,9 @@
-# cma-service — Status & Roadmap
+# hetairoi — Status & Roadmap
 
 ## Current status (2026-06-14)
 
 **P1 + P2 built and verified end-to-end by the official `anthropic` SDK.** `e2e/`
-is 9/9 green, driving cma-service with the real SDK against a fake-ahsir backend
+is 9/9 green, driving hetairoi with the real SDK against a fake-ahsir backend
 (now over the A2A `message/stream` transport). `go test ./...` is green with the
 race detector across `internal/{cma,store,translate,ahsir,api}`.
 
@@ -125,7 +125,7 @@ change is implemented (confirmed with the ahsir maintainer):
   `handleAdminStart` scaffolds the workspace + writes the card before `StartAgent`,
   allocating a managed workspace when `workspace` is empty.
 
-cma-service speaks this contract in `internal/ahsir/{card.go,client.go}`. **Still needs a
+hetairoi speaks this contract in `internal/ahsir/{card.go,client.go}`. **Still needs a
 live run with a real LLM provider** to exercise a real turn end to end (ahsir spawns a
 `claude`/`codex` subprocess); the CMA side and the wire contract are unit- and
 SDK-verified now.
@@ -137,7 +137,7 @@ SDK-verified now.
 
 - **Streaming**: `runTurn` consumes ahsir's A2A `message/stream` SSE (`POST /a2a/{name}`,
   `partial_messages` set on the card). The minimal A2A client lives in
-  `internal/ahsir/a2a.go` (hand-rolled to keep cma-service stdlib-only; wire shapes
+  `internal/ahsir/a2a.go` (hand-rolled to keep hetairoi stdlib-only; wire shapes
   verified against `a2a-go` v0.3.15). Deltas are buffered into one `agent.message` — see
   the "not expressible" note above for why we don't emit per-delta events.
 - **Persistence**: whole-file JSON in `internal/store` is still MVP-grade; swap for a
@@ -167,7 +167,7 @@ Event models live under `anthropic/types/beta/sessions/beta_managed_agents_*_eve
 - The module is inside `GOPATH/src` with `GO111MODULE=off` globally → prefix go
   commands with `GO111MODULE=on`.
 - This corporate Mac **SIGKILLs directly-executed freshly-built binaries** (rc=137).
-  Run via `go run ./cmd/cma-service` (and `go run ./e2e/fakeahsir`), not a built
+  Run via `go run ./cmd/hetairoi` (and `go run ./e2e/fakeahsir`), not a built
   binary. `go build`/`go vet` work fine for checking.
 - git.internal.example.com is unreachable from some sandboxes (SSH:22 and HTTPS:443 time out);
   push from an environment with the corporate VPN.

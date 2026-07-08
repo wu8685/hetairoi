@@ -1,4 +1,4 @@
-# cma-service — agent orientation (Codex)
+# hetairoi — agent orientation (Codex)
 
 Equivalent to `CLAUDE.md`; kept in sync for Codex.
 
@@ -11,7 +11,7 @@ official `anthropic` SDK pointed at `base_url` drives it as a drop-in.
 ## Repo map
 
 ```
-cmd/cma-service/      entrypoint
+cmd/hetairoi/      entrypoint
 internal/cma/         CMA wire types (external API surface) + ids
 internal/ahsir/       ahsir gateway client + inline AgentCard
 internal/translate/   CMA agent → ahsir card; (agent_id,version) → ahsir name
@@ -28,7 +28,7 @@ e2e/                  official-SDK end-to-end tests + fakeahsir backend
 ```sh
 GO111MODULE=on go build ./...
 GO111MODULE=on go vet ./...
-GO111MODULE=on go run ./cmd/cma-service
+GO111MODULE=on go run ./cmd/hetairoi
 python3 -m pip install -r e2e/requirements.txt
 ./e2e/run.sh
 ```

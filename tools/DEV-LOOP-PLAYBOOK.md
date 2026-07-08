@@ -6,11 +6,11 @@ Goal of this doc: spin the **same formation** back up fast, without re-hitting t
 gotchas below.
 
 ## Stack it runs on
-- cma-service `127.0.0.1:18790`, ahsir scheduler `:9800`, ahsir UI `:19801` — all
-  login LaunchAgents under `~/.cma-stack/` (see the cma-service-autostart memory).
-- The `github` eventbus source lives in cma-service (`internal/eventbus/source_github.go`,
+- hetairoi `127.0.0.1:18790`, ahsir scheduler `:9800`, ahsir UI `:19801` — all
+  login LaunchAgents under `~/.cma-stack/` (see the hetairoi-autostart memory).
+- The `github` eventbus source lives in hetairoi (`internal/eventbus/source_github.go`,
   3-event model). Rebuild the deployed binary after code changes:
-  `GO111MODULE=on go build -o ~/.cma-stack/bin/cma-service ./cmd/cma-service && codesign --force --sign - ~/.cma-stack/bin/cma-service && launchctl kickstart -k gui/501/com.wu8685.cma-service`
+  `GO111MODULE=on go build -o ~/.cma-stack/bin/hetairoi ./cmd/hetairoi && codesign --force --sign - ~/.cma-stack/bin/hetairoi && launchctl kickstart -k gui/501/com.wu8685.hetairoi`
 
 ## The formation (what setup-dev-loop.py creates)
 - **agents** (opus, `metadata.shell_access=true`, `runtime_timeout` 1800–2400s):
@@ -48,7 +48,7 @@ Pause the loop (keeps handlers/agents): `curl -s --noproxy '*' -X DELETE http://
    + a **verdict marker in a PR comment** (`<!-- cma-review:approved -->` / `<!-- cma-review:changes -->`),
    NOT native review state. Event-type separation also prevents self-triggering.
 3. **CMA_TURN_TIMEOUT default 10m is too short** for real coding turns → set `CMA_TURN_TIMEOUT=45m`
-   in the cma-service plist + `runtime_timeout` (e.g. 2400s) on the agent. Changing plist env
+   in the hetairoi plist + `runtime_timeout` (e.g. 2400s) on the agent. Changing plist env
    needs `launchctl bootout gui/501/<label>` then `bootstrap` (kickstart does NOT reload env).
 4. **PAT scope.** Fine-grained token needs the target repo with Contents + Pull requests + Issues
    write. Probe first: create+delete a temp ref (Contents:write); a read-only token 403s on the first push.

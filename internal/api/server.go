@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/config"
-	"github.com/wu8685/cma-service/internal/eventbus"
-	"github.com/wu8685/cma-service/internal/store"
-	"github.com/wu8685/cma-service/internal/translate"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/config"
+	"github.com/wu8685/hetairoi/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/store"
+	"github.com/wu8685/hetairoi/internal/translate"
 )
 
 type Server struct {

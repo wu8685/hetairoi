@@ -1,4 +1,4 @@
-// Command eventbus-example runs cma-service with an event bus wired for an
+// Command eventbus-example runs hetairoi with an event bus wired for an
 // ops-alert auto-handling scenario: a webhook receives alerts, a handler routes
 // each alert (by subject) to a session, and an ahsir-backed agent investigates
 // using its shell tools and reports.
@@ -20,12 +20,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/wu8685/cma-service/internal/ahsir"
-	"github.com/wu8685/cma-service/internal/api"
-	"github.com/wu8685/cma-service/internal/cma"
-	"github.com/wu8685/cma-service/internal/config"
-	"github.com/wu8685/cma-service/internal/eventbus"
-	"github.com/wu8685/cma-service/internal/store"
+	"github.com/wu8685/hetairoi/internal/ahsir"
+	"github.com/wu8685/hetairoi/internal/api"
+	"github.com/wu8685/hetairoi/internal/cma"
+	"github.com/wu8685/hetairoi/internal/config"
+	"github.com/wu8685/hetairoi/internal/eventbus"
+	"github.com/wu8685/hetairoi/internal/store"
 )
 
 func main() {

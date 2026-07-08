@@ -1,4 +1,4 @@
-# cma-service
+# hetairoi
 
 An **Anthropic Managed Agents (CMA) compatible API**, backed by an
 [ahsir](https://github.com/wu8685/ahsir) agent fleet.
@@ -9,7 +9,7 @@ output. Internally each session is served by an ahsir agent process.
 
 ```
 official anthropic SDK ──/v1/agents, /v1/environments, /v1/sessions,
-                          /v1/sessions/{id}/events[/stream]──▶ cma-service ──▶ ahsir gateway
+                          /v1/sessions/{id}/events[/stream]──▶ hetairoi ──▶ ahsir gateway
 ```
 
 ## What it maps
@@ -61,7 +61,7 @@ changes (inline registration + streaming cancel) are in `../ahsir`; see
 CMA_LISTEN=127.0.0.1:8787 \
 CMA_AHSIR_URL=http://127.0.0.1:9800 \
 CMA_AHSIR_ADMIN_TOKEN=... \
-go run ./cmd/cma-service
+go run ./cmd/hetairoi
 ```
 
 Config (env): `CMA_LISTEN`, `CMA_AHSIR_URL`, `CMA_AHSIR_ADMIN_TOKEN`,

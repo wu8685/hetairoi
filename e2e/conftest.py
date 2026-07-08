@@ -1,5 +1,5 @@
-"""Pytest fixtures that boot fakeahsir + cma-service and hand the official
-Anthropic SDK back, pointed at cma-service.
+"""Pytest fixtures that boot fakeahsir + hetairoi and hand the official
+Anthropic SDK back, pointed at hetairoi.
 
 The whole suite is self-contained: it needs only `go` and the `anthropic` Python
 SDK. No real ahsir and no live LLM — fakeahsir supplies deterministic replies so
@@ -83,14 +83,14 @@ def ahsir_url() -> str:
 
 @pytest.fixture(scope="session")
 def base_url(ahsir_url) -> str:
-    """Boot cma-service pointed at ahsir_url; return its base URL."""
+    """Boot hetairoi pointed at ahsir_url; return its base URL."""
     port = _free_port()
     state = "/tmp/cma-e2e-state.json"
     if os.path.exists(state):
         os.remove(state)
-    log = open("/tmp/cma-e2e-cma-service.log", "w")
+    log = open("/tmp/cma-e2e-hetairoi.log", "w")
     proc = subprocess.Popen(
-        ["go", "run", "./cmd/cma-service"],
+        ["go", "run", "./cmd/hetairoi"],
         cwd=REPO_ROOT,
         env=_go_env(
             CMA_LISTEN=f"127.0.0.1:{port}",
@@ -115,7 +115,7 @@ def base_url(ahsir_url) -> str:
 
 @pytest.fixture(scope="session")
 def client(base_url) -> Anthropic:
-    """Official Anthropic SDK, pointed at cma-service. trust_env=False keeps the
+    """Official Anthropic SDK, pointed at hetairoi. trust_env=False keeps the
     corporate proxy out of localhost calls."""
     return Anthropic(
         api_key="sk-cma-e2e",

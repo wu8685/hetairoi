@@ -17,7 +17,7 @@ def call(method, path, body=None):
 REPO = "wu8685/ahsir"
 TOKEN_FILE = "/Users/wu8685/.cma-stack/github-token"
 
-# ---- clean up the old cma-service-repo handlers (they'd intercept ahsir issues) ----
+# ---- clean up the old hetairoi-repo handlers (they'd intercept ahsir issues) ----
 for h in ("gh-issues", "gh-prs"):
     try:
         call("DELETE", "/v1/eventbus/handlers/" + h); print("deleted old handler", h)

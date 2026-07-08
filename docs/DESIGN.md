@@ -1,4 +1,4 @@
-# cma-service — Design
+# hetairoi — Design
 
 ## Goal
 
@@ -9,7 +9,7 @@ agent process.
 
 ```
 official anthropic SDK ──/v1/agents, /v1/environments, /v1/sessions,
-   (x-api-key,             /v1/sessions/{id}/events[/stream]──▶  cma-service  ──▶ ahsir gateway
+   (x-api-key,             /v1/sessions/{id}/events[/stream]──▶  hetairoi  ──▶ ahsir gateway
     anthropic-version,                                              │                (/admin/agents,
     anthropic-beta:                                                 │                 /agents/{name}/chat,
     managed-agents-2026-04-01)                                      │                 /a2a/{name}, /history)
@@ -18,7 +18,7 @@ official anthropic SDK ──/v1/agents, /v1/environments, /v1/sessions,
                                                                     └─ translate: CMA shapes ⇄ ahsir card/chat/stream
 ```
 
-cma-service plays the role of Anthropic's managed-agents **control plane**; ahsir
+hetairoi plays the role of Anthropic's managed-agents **control plane**; ahsir
 is the orchestration layer **and** the tool-execution container (its `claude`/`codex`
 subprocess runs the agent loop and executes bash/read/edit in the agent workspace).
 
@@ -31,7 +31,7 @@ subprocess runs the agent loop and executes bash/read/edit in the agent workspac
 | **Session** — stateful run | `/v1/sessions` | `session_id → (ahsir agent name, contextId)` mapping held in the store |
 | **Events** — send / stream / list | `/v1/sessions/{id}/events[/stream]` | send `user.message` → `POST /agents/{name}/chat`; stream = live event tail; list = event log |
 
-**Versioning lives entirely in cma-service.** ahsir sees a flat set of distinct
+**Versioning lives entirely in hetairoi.** ahsir sees a flat set of distinct
 agents and is version-agnostic. Each agent update creates a new immutable version
 snapshot in the store; a session pins the version at create time and resolves to
 the matching `cma-<id>-v<n>` ahsir agent.
@@ -68,7 +68,7 @@ the matching `cma-<id>-v<n>` ahsir agent.
 | `internal/store` | resource store (agents/versions, environments, sessions) + per-session event log/bus; whole-file JSON persistence |
 | `internal/config` | env-based config |
 | `internal/api` | routing (`net/http` 1.22 ServeMux), auth, handlers, turn execution |
-| `cmd/cma-service` | entrypoint |
+| `cmd/hetairoi` | entrypoint |
 | `e2e` | official-SDK end-to-end tests + `fakeahsir` backend |
 
 ## Wire-shape alignment (important)
@@ -99,7 +99,7 @@ not guessed from docs. Lessons baked in (regressions to avoid):
 
 ## The ahsir backend contract
 
-cma-service depends on this ahsir surface (all but one already exist today):
+hetairoi depends on this ahsir surface (all but one already exist today):
 
 | Need | ahsir endpoint | Status |
 |---|---|---|

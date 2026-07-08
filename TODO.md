@@ -1,10 +1,10 @@
-# cma-service / ahsir / eventbus — 状态与 TODO
+# hetairoi / ahsir / eventbus — 状态与 TODO
 
 > 接续用(compact 后从这里恢复)。最后更新:2026-06-15。
 
 ## 1. 已完成并提交(均**本地提交,未 push**)
 
-| 工作 | cma-service commit | ahsir commit |
+| 工作 | hetairoi commit | ahsir commit |
 |---|---|---|
 | **P2** A2A 流式 / interrupt / 分页 / GC / 持久化 | `c7644bb` | `67ca6c6` |
 | **A** 资源 CRUD 补全 + archive 生命周期 hardening | `538287e` `085fa3e` | — |
@@ -14,10 +14,10 @@
 | **Event Bus** driver + webhook + 可跑 example | `5899b45` | — |
 
 **分支**:
-- cma-service:`eventbus`(7 提交,**superset**,含上面全部)· `p2-streaming-interrupt-hardening`(前 5 个的子集)· `main`(仅 initial)
+- hetairoi:`eventbus`(7 提交,**superset**,含上面全部)· `p2-streaming-interrupt-hardening`(前 5 个的子集)· `main`(仅 initial)
 - ahsir:`inline-registration-streaming-cancel`(3 提交)· `main`
 
-测试基线:cma-service 58 Go test(race)+ e2e 16/16 全绿;ahsir wrapper 189(scheduler 有 1 个**预存失败** `TestInvocationLedgerReplayIgnoresBadJSONLLines`,与本次无关)。
+测试基线:hetairoi 58 Go test(race)+ e2e 16/16 全绿;ahsir wrapper 189(scheduler 有 1 个**预存失败** `TestInvocationLedgerReplayIgnoresBadJSONLLines`,与本次无关)。
 
 全部经**真实 ahsir + DeepSeek** 验证(inline 注册、流式、interrupt、多轮、C1/C2 观测事件、eventbus 全链路告警处置)。
 
@@ -25,15 +25,15 @@
 
 ### 高优先 / 卫生
 - [ ] **push + 合并分支**到 git.internal.example.com(CodeHub,PR 制)。**沙箱连不上 git.internal.example.com(SSH/HTTPS 超时),需在 VPN 环境 push**:
-  - `git push origin eventbus`(cma-service,含全部)
+  - `git push origin eventbus`(hetairoi,含全部)
   - `cd ../ahsir && git push codehub inline-registration-streaming-cancel`(**注意 remote 名是 `codehub`;勿带上无关的 README.md / orchestrator/SKILL.md 改动**)
 - [ ] ahsir 预存失败测试 `TestInvocationLedgerReplayIgnoresBadJSONLLines`(非本次,环境相关)
 
 ### D — custom tools(高阶,**eventbus 闭环的前置**)
-- [ ] 方案已与the ahsir maintainer讨论定:**MCP 桥**——把 custom tool 注册成 cma-service 自托管的 MCP 工具,用 **MCP 调用的天然阻塞**当 turn 挂起点,翻译成 CMA 的 `requires_action` 协议。基本不碰 ahsir runtime。
+- [ ] 方案已与the ahsir maintainer讨论定:**MCP 桥**——把 custom tool 注册成 hetairoi 自托管的 MCP 工具,用 **MCP 调用的天然阻塞**当 turn 挂起点,翻译成 CMA 的 `requires_action` 协议。基本不碰 ahsir runtime。
 - [ ] 协议说明已存:`brain-spark/knowledge/raw/摘录/2026-06-15-cma-custom-tool-use-协议.md`
 - [ ] 范围:先 custom tool 核心(`agent.custom_tool_use` → `status_idle{requires_action,event_ids}` → `user.custom_tool_result` → resume);`user.tool_confirmation`(预置工具审批,走 claude permission hook)单列、更难。
-- [ ] 建议先做**最小可行性 spike**(让 DeepSeek 真调一个 cma-service 托管的 MCP 工具,确认 MCP 调用 block 到客户端回结果)。
+- [ ] 建议先做**最小可行性 spike**(让 DeepSeek 真调一个 hetairoi 托管的 MCP 工具,确认 MCP 调用 block 到客户端回结果)。
 
 ### Event Bus
 - [ ] spec:`docs/EVENTBUS-SPEC.md`(§12 = 验收/TDD 清单)。三档 policy(Stateless/Keyed/Routed)+ 去重(per-handler 持久化 rotate)+ webhook + driver 全做完。
@@ -69,7 +69,7 @@
 
 ## 5. 关键文件 / 入口
 
-- 协议层:`docs/DESIGN.md`(SDK↔cma-service↔ahsir 两层协议)· `docs/ROADMAP.md`(状态/相位)· `docs/EVENTBUS-SPEC.md`
+- 协议层:`docs/DESIGN.md`(SDK↔hetairoi↔ahsir 两层协议)· `docs/ROADMAP.md`(状态/相位)· `docs/EVENTBUS-SPEC.md`
 - ahsir 对接:`internal/ahsir/{client,card,a2a}.go`(A2A JSON-RPC + DataPart 观测事件)
 - 事件总线:`internal/eventbus/`(package)· `internal/api/busdriver.go`(driver)· `cmd/eventbus-example/` + `example/eventbus/`(可跑 demo,`run.sh`)
 - ahsir 侧:`internal/wrapper/{card,server,session_claude,executor,session_types}.go`(inline 注册、streaming cancel、DataPart surface)
