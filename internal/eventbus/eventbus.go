@@ -36,6 +36,31 @@ type SessionSummary struct {
 	Seed         string // first user.message, truncated — the session's topic seed
 	Last         string // most recent agent.message, truncated — current state
 	Archived     bool
+	Status       string // runtime status (running/idle/rescheduling/terminated/…); "" = unknown
+}
+
+// Terminal session statuses — a session in one of these can no longer accept a
+// turn, so keyed/routed policies must not reuse it. An empty status is treated as
+// runnable (the driver may not populate it).
+const (
+	StatusTerminated = "terminated"
+	StatusErrored    = "errored"
+	StatusError      = "error"
+)
+
+// Reusable reports whether a session can accept another turn: it must not be
+// archived and not be in a terminal (terminated/errored) status. This is what a
+// keyed binding or a routed candidate must satisfy before it is reused — a
+// terminated/pre-restart session would 404 the turn otherwise.
+func (s SessionSummary) Reusable() bool {
+	if s.Archived {
+		return false
+	}
+	switch s.Status {
+	case StatusTerminated, StatusErrored, StatusError:
+		return false
+	}
+	return true
 }
 
 // SessionDriver is how the bus drives the agent runtime (hetairoi). The bus

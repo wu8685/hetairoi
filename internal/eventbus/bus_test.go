@@ -14,6 +14,7 @@ type fakeDriver struct {
 	created          []AgentRef
 	sent             []sent
 	summaries        map[string]SessionSummary // overrides (e.g. archived)
+	sendErr          map[string]error          // per-session SendUserMessage failures (e.g. 404)
 	routerReply      string
 	routerErr        error
 	lastRouterPrompt string
@@ -24,7 +25,9 @@ type sent struct {
 	prompt    string
 }
 
-func newFake() *fakeDriver { return &fakeDriver{summaries: map[string]SessionSummary{}} }
+func newFake() *fakeDriver {
+	return &fakeDriver{summaries: map[string]SessionSummary{}, sendErr: map[string]error{}}
+}
 
 func (f *fakeDriver) CreateSession(agent AgentRef, envID string) (string, error) {
 	f.mu.Lock()
@@ -39,7 +42,7 @@ func (f *fakeDriver) SendUserMessage(sessionID, prompt string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent = append(f.sent, sent{sessionID, prompt})
-	return nil
+	return f.sendErr[sessionID]
 }
 
 func (f *fakeDriver) RunForReply(agent AgentRef, envID, prompt string) (string, error) {
@@ -200,6 +203,164 @@ func TestKeyed_ArchivedBoundReplaced(t *testing.T) {
 	second := b.Dispatch(Event{ID: "2", Subject: "k"})
 	if second[0].SessionID == first[0].SessionID {
 		t.Fatal("an archived bound session must be replaced by a new one")
+	}
+}
+
+// Regression for #4: a keyed binding pointing at a terminated (or errored)
+// session — e.g. one killed by a scheduler restart — must NOT be reused. The next
+// dispatch has to create a fresh session and re-point the binding, otherwise
+// every retrigger streams to the dead session and 404s.
+func TestKeyed_TerminatedBoundReplaced(t *testing.T) {
+	for _, status := range []string{StatusTerminated, StatusErrored, StatusError} {
+		t.Run(status, func(t *testing.T) {
+			f := newFake()
+			b := New(f, t.TempDir(), 8)
+			_ = b.Register(Subscription{Name: "s", Match: func(Event) bool { return true },
+				Policy: Keyed{Agent: AgentRef{ID: "a"}, Key: func(e Event) string { return e.Subject }, Prompt: func(Event) string { return "p" }}})
+
+			first := b.Dispatch(Event{ID: "1", Subject: "k"})
+			// The bound session is now terminated (exists, not archived — the old
+			// "alive" definition would have wrongly reused it).
+			f.summaries[first[0].SessionID] = SessionSummary{SessionID: first[0].SessionID, Status: status}
+
+			second := b.Dispatch(Event{ID: "2", Subject: "k"})
+			if second[0].SessionID == first[0].SessionID {
+				t.Fatalf("a %s bound session must be replaced by a fresh one", status)
+			}
+			if second[0].Err != nil {
+				t.Fatalf("fresh session dispatch errored: %v", second[0].Err)
+			}
+			// The binding must now follow the fresh session, so a third event reuses it
+			// (not the dead one, and not yet-another new session).
+			third := b.Dispatch(Event{ID: "3", Subject: "k"})
+			if third[0].SessionID != second[0].SessionID {
+				t.Fatalf("binding not re-pointed: third=%s want %s", third[0].SessionID, second[0].SessionID)
+			}
+		})
+	}
+}
+
+// Regression for #4: even when the bound session still *looks* reusable (status
+// unknown), a reused turn that 404s — because the scheduler restart orphaned the
+// agent's inline registration — must self-recover: drop the binding, create a
+// fresh (re-registered) session, and retry the turn once.
+func TestKeyed_ReuseRecoversOnSendFailure(t *testing.T) {
+	f := newFake()
+	b := New(f, t.TempDir(), 8)
+	_ = b.Register(Subscription{Name: "s", Match: func(Event) bool { return true },
+		Policy: Keyed{Agent: AgentRef{ID: "a"}, Key: func(e Event) string { return e.Subject }, Prompt: func(e Event) string { return "p:" + e.ID }}})
+
+	first := b.Dispatch(Event{ID: "1", Subject: "k"})
+	dead := first[0].SessionID
+	// The bound session still reports reusable, but its turn now 404s.
+	f.sendErr[dead] = fmt.Errorf("stream %q: agent not found (404)", dead)
+
+	second := b.Dispatch(Event{ID: "2", Subject: "k"})
+	if second[0].SessionID == dead {
+		t.Fatal("a reused session whose turn 404s must be replaced, not kept")
+	}
+	if second[0].Err != nil {
+		t.Fatalf("recovery should have retried on a fresh session, got err: %v", second[0].Err)
+	}
+	// The retry re-sent the SAME prompt to the fresh session.
+	if got := f.lastSent(); got.sessionID != second[0].SessionID || got.prompt != "p:2" {
+		t.Fatalf("retry sent %+v, want prompt p:2 on %s", got, second[0].SessionID)
+	}
+	// Binding now points at the fresh session — the next event reuses it cleanly.
+	third := b.Dispatch(Event{ID: "3", Subject: "k"})
+	if third[0].SessionID != second[0].SessionID {
+		t.Fatalf("binding not re-pointed after recovery: third=%s want %s", third[0].SessionID, second[0].SessionID)
+	}
+}
+
+// A stateless turn that fails must NOT trigger reuse-recovery (there is no session
+// to replace) — the error surfaces as-is.
+func TestStateless_SendFailureNotRecovered(t *testing.T) {
+	f := newFake()
+	b := New(f, t.TempDir(), 8)
+	_ = b.Register(Subscription{Name: "s", Match: func(Event) bool { return true }, Policy: stateless("p")})
+
+	// Fail the first session that will be created.
+	f.sendErr["sesn_1"] = fmt.Errorf("boom")
+	res := b.Dispatch(Event{ID: "1"})
+	if res[0].Err == nil {
+		t.Fatal("stateless send failure must surface, not be silently recovered")
+	}
+	if f.sentCount() != 1 {
+		t.Fatalf("stateless must not retry on a fresh session; sent %d", f.sentCount())
+	}
+}
+
+// A terminated candidate must be excluded from the Routed router's candidate set,
+// so the router is never offered a dead session to reuse.
+func TestRouted_TerminatedCandidateExcluded(t *testing.T) {
+	f := newFake()
+	b := New(f, t.TempDir(), 8)
+	_ = b.Register(routedSub("s", 20))
+
+	f.routerReply = `{"reuse_session_id":"","prompt":"first"}`
+	first := b.Dispatch(Event{ID: "1"})
+	sid := first[0].SessionID
+	// Terminate that session; it must no longer be a reuse candidate.
+	f.summaries[sid] = SessionSummary{SessionID: sid, Status: StatusTerminated}
+
+	f.routerReply = fmt.Sprintf(`{"reuse_session_id":%q,"prompt":"second"}`, sid)
+	second := b.Dispatch(Event{ID: "2"})
+	if second[0].SessionID == sid {
+		t.Fatal("a terminated candidate must not be reused by the router")
+	}
+	if strings.Contains(f.lastRouterPrompt, sid) {
+		t.Fatalf("terminated session %s should be excluded from the router prompt: %s", sid, f.lastRouterPrompt)
+	}
+}
+
+// A routed session the router chose to reuse whose turn 404s must also self-
+// recover onto a fresh session (exercises refresh's Routed branch).
+func TestRouted_ReuseRecoversOnSendFailure(t *testing.T) {
+	f := newFake()
+	b := New(f, t.TempDir(), 8)
+	_ = b.Register(routedSub("s", 20))
+
+	f.routerReply = `{"reuse_session_id":"","prompt":"first"}`
+	first := b.Dispatch(Event{ID: "1"})
+	sid := first[0].SessionID
+
+	// Router picks the existing session, but its turn 404s.
+	f.routerReply = fmt.Sprintf(`{"reuse_session_id":%q,"prompt":"second"}`, sid)
+	f.sendErr[sid] = fmt.Errorf("stream %q: agent not found (404)", sid)
+
+	second := b.Dispatch(Event{ID: "2"})
+	if second[0].SessionID == sid {
+		t.Fatal("a reused routed session whose turn 404s must be replaced")
+	}
+	if second[0].Err != nil {
+		t.Fatalf("routed recovery should have retried on a fresh session, got: %v", second[0].Err)
+	}
+	if got := f.lastSent(); got.sessionID != second[0].SessionID || got.prompt != "second" {
+		t.Fatalf("retry sent %+v, want prompt 'second' on the fresh session", got)
+	}
+}
+
+func TestSessionSummary_Reusable(t *testing.T) {
+	cases := []struct {
+		name string
+		s    SessionSummary
+		want bool
+	}{
+		{"empty-status-runnable", SessionSummary{}, true},
+		{"running", SessionSummary{Status: "running"}, true},
+		{"idle", SessionSummary{Status: "idle"}, true},
+		{"rescheduling", SessionSummary{Status: "rescheduling"}, true},
+		{"archived", SessionSummary{Archived: true}, false},
+		{"archived-beats-running", SessionSummary{Archived: true, Status: "running"}, false},
+		{"terminated", SessionSummary{Status: StatusTerminated}, false},
+		{"errored", SessionSummary{Status: StatusErrored}, false},
+		{"error", SessionSummary{Status: StatusError}, false},
+	}
+	for _, c := range cases {
+		if got := c.s.Reusable(); got != c.want {
+			t.Errorf("%s: Reusable()=%v, want %v", c.name, got, c.want)
+		}
 	}
 }
 

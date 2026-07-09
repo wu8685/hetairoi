@@ -96,9 +96,18 @@ func (b *Bus) Dispatch(e Event) []DispatchResult {
 			results = append(results, DispatchResult{Subscription: r.sub.Name, EventID: e.ID, Skipped: true})
 			continue
 		}
-		sid, prompt, err := b.resolve(r, e)
+		sid, prompt, reused, err := b.resolve(r, e)
 		if err == nil && prompt != "" {
 			err = b.driver.SendUserMessage(sid, prompt)
+			// A reused session may point at an agent whose inline registration was
+			// orphaned (e.g. a scheduler restart) → the turn 404s. Recover once by
+			// forcing a fresh, re-registered session and retrying the turn.
+			if err != nil && reused {
+				if newSID, rerr := b.refresh(r, e); rerr == nil && newSID != "" {
+					sid = newSID
+					err = b.driver.SendUserMessage(sid, prompt)
+				}
+			}
 		}
 		results = append(results, DispatchResult{Subscription: r.sub.Name, EventID: e.ID, SessionID: sid, Err: err})
 	}
@@ -106,45 +115,73 @@ func (b *Bus) Dispatch(e Event) []DispatchResult {
 }
 
 // resolve produces the (sessionID, prompt) for one matched subscription per its
-// policy.
-func (b *Bus) resolve(r *registered, e Event) (string, string, error) {
+// policy. reused is true when an existing session was reused rather than freshly
+// created — the caller uses it to gate 404 recovery.
+func (b *Bus) resolve(r *registered, e Event) (sid, prompt string, reused bool, err error) {
 	switch p := r.sub.Policy.(type) {
 	case Stateless:
 		sid, err := b.driver.CreateSession(p.Agent, p.EnvID)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		r.store.addCreated(sid)
-		return sid, p.Prompt(e), nil
+		return sid, p.Prompt(e), false, nil
 
 	case Keyed:
 		key := p.Key(e)
 		if sid, ok := r.store.binding(key); ok && b.alive(sid) {
-			return sid, p.Prompt(e), nil
+			return sid, p.Prompt(e), true, nil
 		}
 		sid, err := b.driver.CreateSession(p.Agent, p.EnvID)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 		r.store.bind(key, sid)
 		r.store.addCreated(sid)
-		return sid, p.Prompt(e), nil
+		return sid, p.Prompt(e), false, nil
 
 	case Routed:
 		return b.resolveRouted(r, p, e)
 
 	default:
-		return "", "", fmt.Errorf("eventbus: unknown policy %T", r.sub.Policy)
+		return "", "", false, fmt.Errorf("eventbus: unknown policy %T", r.sub.Policy)
 	}
 }
 
-// alive reports whether a session exists and is not archived.
-func (b *Bus) alive(sessionID string) bool {
-	s, err := b.driver.SessionSummary(sessionID)
-	return err == nil && !s.Archived
+// refresh creates a fresh session for a keyed/routed subscription and re-points
+// its binding (keyed only), used to recover from a reused session that rejected a
+// turn. Returns "" for a Stateless policy (which never reuses).
+func (b *Bus) refresh(r *registered, e Event) (string, error) {
+	var agent AgentRef
+	var envID string
+	switch p := r.sub.Policy.(type) {
+	case Keyed:
+		agent, envID = p.Agent, p.EnvID
+	case Routed:
+		agent, envID = p.Agent, p.EnvID
+	default:
+		return "", nil
+	}
+	sid, err := b.driver.CreateSession(agent, envID)
+	if err != nil {
+		return "", err
+	}
+	if p, ok := r.sub.Policy.(Keyed); ok {
+		r.store.bind(p.Key(e), sid) // overwrite the stale binding
+	}
+	r.store.addCreated(sid)
+	return sid, nil
 }
 
-func (b *Bus) resolveRouted(r *registered, p Routed, e Event) (string, string, error) {
+// alive reports whether a session exists and is still reusable (not archived and
+// not in a terminal status). A terminated/pre-restart session is NOT alive, so a
+// keyed policy will create a fresh one instead of streaming to a dead session.
+func (b *Bus) alive(sessionID string) bool {
+	s, err := b.driver.SessionSummary(sessionID)
+	return err == nil && s.Reusable()
+}
+
+func (b *Bus) resolveRouted(r *registered, p Routed, e Event) (string, string, bool, error) {
 	max := p.Router.MaxCandidates
 	if max <= 0 {
 		max = defaultMaxCandidates
@@ -152,7 +189,7 @@ func (b *Bus) resolveRouted(r *registered, p Routed, e Event) (string, string, e
 	var cands []SessionSummary
 	for _, sid := range r.store.recentCreated(max) {
 		s, err := b.driver.SessionSummary(sid)
-		if err != nil || s.Archived {
+		if err != nil || !s.Reusable() {
 			continue
 		}
 		cands = append(cands, s)
@@ -164,16 +201,16 @@ func (b *Bus) resolveRouted(r *registered, p Routed, e Event) (string, string, e
 		prompt = p.Prompt(e)
 	}
 
-	// Reuse only a candidate that is valid + alive; otherwise create new.
+	// Reuse only a candidate that is valid + reusable; otherwise create new.
 	if dec.ReuseSessionID != "" && candidateContains(cands, dec.ReuseSessionID) {
-		return dec.ReuseSessionID, prompt, nil
+		return dec.ReuseSessionID, prompt, true, nil
 	}
 	sid, err := b.driver.CreateSession(p.Agent, p.EnvID)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	r.store.addCreated(sid)
-	return sid, prompt, nil
+	return sid, prompt, false, nil
 }
 
 type routerDecision struct {

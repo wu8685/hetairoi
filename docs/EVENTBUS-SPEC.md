@@ -40,8 +40,14 @@ type SessionSummary struct {
     Seed         string // first user.message, truncated — the session's topic seed
     Last         string // most recent agent.message, truncated — current state
     Archived     bool
+    Status       string // runtime status (running/idle/rescheduling/terminated/…); "" = unknown
 }
 ```
+
+A session is **reusable** only when it is neither archived nor in a terminal
+status (`terminated` / `errored`). A keyed binding or routed candidate that is not
+reusable is dropped and replaced by a fresh session — otherwise a terminated /
+pre-restart session would 404 every retriggered turn (see §4.2).
 
 ## 3. Data model
 
@@ -90,8 +96,11 @@ type Keyed struct {
 }
 ```
 `Key(event)` → look up the bound session for `(subscription, key)`; reuse if
-present (and not archived), else create and bind. Then send `Prompt(event)`.
-Cheap, deterministic — the default for message-assistant (`Key = thread-id`).
+present **and reusable** (not archived, not terminated/errored), else create and
+(re)bind. Then send `Prompt(event)`. If the reused session rejects the turn (e.g.
+a scheduler restart orphaned the agent registration → 404), the binding is
+dropped and the turn is retried once on a fresh, re-registered session. Cheap,
+deterministic — the default for message-assistant (`Key = thread-id`).
 
 ### 4.3 Routed — an LLM router decides reuse
 ```go
@@ -213,10 +222,10 @@ Bus / dispatch:
 
 Policies:
 5. Stateless: each event creates a new session and sends `Prompt(event)`.
-6. Keyed: two events with the same `Key` reuse one session; a new `Key` creates a new one; an archived bound session is replaced by a new one.
+6. Keyed: two events with the same `Key` reuse one session; a new `Key` creates a new one; an archived **or terminated/errored** bound session is replaced by a fresh one, and the binding is re-pointed; a reused session whose turn fails (404) self-recovers onto a fresh session, retried once.
 7. Routed (reuse): router returns a valid `reuse_session_id` → that session is reused and `prompt` is sent.
 8. Routed (new): router returns empty `reuse_session_id` → a new session is created.
-9. Routed (degrade): router reply is unparseable / names an unknown or archived session → a new session is created, no crash.
+9. Routed (degrade): router reply is unparseable / names an unknown, archived **or terminated** session → a new session is created, no crash.
 10. Routed (candidates): the candidate list is capped at `MaxCandidates`, newest-active first, each carrying a derived summary (seed + last).
 
 Registry / driver:

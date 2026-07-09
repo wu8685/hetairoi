@@ -155,6 +155,7 @@ func (d *Driver) SessionSummary(sessionID string) (eventbus.SessionSummary, erro
 		SessionID: sessionID,
 		CreatedAt: sess.CreatedAt,
 		Archived:  !sess.ArchivedAt.IsZero(),
+		Status:    string(sess.Status),
 	}
 
 	var seed, last string
