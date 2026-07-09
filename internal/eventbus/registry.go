@@ -20,6 +20,7 @@ import (
 type Registry struct {
 	bus  *Bus
 	path string
+	dir  string // base state dir; per-source exec scratch lives under <dir>/eventbus/scratch/<name>
 
 	mu       sync.Mutex
 	sources  map[string]SourceSpec
@@ -40,6 +41,7 @@ func NewRegistry(ctx context.Context, bus *Bus, dir string) (*Registry, error) {
 	r := &Registry{
 		bus:      bus,
 		path:     filepath.Join(dir, "eventbus", "_registry.json"),
+		dir:      dir,
 		sources:  map[string]SourceSpec{},
 		handlers: map[string]HandlerSpec{},
 		cancels:  map[string]context.CancelFunc{},
@@ -164,7 +166,7 @@ func (r *Registry) ListSources() []SourceSpec {
 // startSource builds the source's fetch and launches its poller goroutine. Must
 // be called with r.mu held.
 func (r *Registry) startSource(spec SourceSpec) error {
-	fetch, err := buildFetch(spec)
+	fetch, err := buildFetch(spec, r.dir)
 	if err != nil {
 		return err
 	}
@@ -175,8 +177,9 @@ func (r *Registry) startSource(spec SourceSpec) error {
 	return nil
 }
 
-// buildFetch maps a typed SourceSpec to a FetchFunc.
-func buildFetch(spec SourceSpec) (FetchFunc, error) {
+// buildFetch maps a typed SourceSpec to a FetchFunc. dir is the registry's base
+// state dir; the exec source derives its per-source scratch dir under it.
+func buildFetch(spec SourceSpec, dir string) (FetchFunc, error) {
 	switch spec.Type {
 	case "codehub-pr":
 		if spec.Project == "" {
@@ -240,6 +243,18 @@ func buildFetch(spec SourceSpec) (FetchFunc, error) {
 			BotMarker:    spec.BotMarker,
 			AllowNumbers: allow,
 			since:        time.Now(), // don't replay history on (re)start; act on new activity only
+		}
+		return src.Fetch, nil
+	case "exec":
+		if len(spec.Command) == 0 {
+			return nil, fmt.Errorf("exec source requires command")
+		}
+		src := ExecSource{
+			Name:      spec.Name,
+			Command:   spec.Command,
+			Env:       spec.Env,
+			Dir:       filepath.Join(dir, "eventbus", "scratch", spec.Name),
+			EventType: spec.EventType,
 		}
 		return src.Fetch, nil
 	default:

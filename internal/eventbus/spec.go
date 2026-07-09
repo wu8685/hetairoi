@@ -49,6 +49,13 @@ type SourceSpec struct {
 	BuildLabel      string `json:"build_label,omitempty"`       // label opting an issue into the loop (default "agent-build")
 	AgentPrefix     string `json:"agent_prefix,omitempty"`      // head-branch prefix marking a loop PR (default "agent/")
 	BotMarker       string `json:"bot_marker,omitempty"`        // issue-comment self-trigger marker (default "<!-- cma-agent -->")
+
+	// Exec fields (Type == "exec"). The generic pluggable source: hetairoi runs
+	// Command every interval and reads a JSON array of events from its stdout, so
+	// a new upstream is a script + a spec, not a code change. EventType above is
+	// reused as the default emitted type for events that omit their own "type".
+	Command []string          `json:"command,omitempty"` // argv; Command[0] is the program
+	Env     map[string]string `json:"env,omitempty"`     // extra env vars passed to the command
 }
 
 // HandlerSpec is the JSON-serializable declaration of a subscription — the body

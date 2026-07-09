@@ -53,13 +53,13 @@ func TestWorkItemSource_FetchBuildsVersionedEvents(t *testing.T) {
 }
 
 func TestBuildFetch_WorkItem(t *testing.T) {
-	if _, err := buildFetch(SourceSpec{Type: "workitem", Space: "W123"}); err != nil {
+	if _, err := buildFetch(SourceSpec{Type: "workitem", Space: "W123"}, t.TempDir()); err != nil {
 		t.Errorf("valid workitem(space): %v", err)
 	}
-	if _, err := buildFetch(SourceSpec{Type: "workitem", Project: "P1"}); err != nil {
+	if _, err := buildFetch(SourceSpec{Type: "workitem", Project: "P1"}, t.TempDir()); err != nil {
 		t.Errorf("valid workitem(project): %v", err)
 	}
-	if _, err := buildFetch(SourceSpec{Type: "workitem"}); err == nil {
+	if _, err := buildFetch(SourceSpec{Type: "workitem"}, t.TempDir()); err == nil {
 		t.Error("workitem without space/project should error")
 	}
 }
