@@ -241,10 +241,51 @@ A minimal reference plugin lives at
 | `POST /v1/eventbus/handlers`        | `HandlerSpec` → register + persist      |
 | `GET /v1/eventbus/handlers`         | `{data:[HandlerSpec…]}`                 |
 | `DELETE /v1/eventbus/handlers/{name}`| unregister + forget                   |
+| `POST /v1/eventbus/handlers/{name}/retry`| replay a seen event → `{results:[…]}` |
 
 Specs are persisted to `<state-dir>/eventbus/_registry.json` and **rebuilt on
 boot** (handlers first, then sources), so a long-running hetairoi keeps its
 wiring across restarts.
+
+### Native event-retry (re-run without mutating upstream)
+
+When a handler's dispatch fails (turn errored / timed out / the bound session was
+terminated) or you just want to re-run it, the wrong fix is to poke the *source*
+repo — toggle the `agent-build` label or post a comment so a fresh `Event.ID`
+escapes dedup. That leaves throwaway noise on GitHub and is fragile (the
+`bot_marker` self-trigger guard means a label toggle alone won't fire).
+
+`POST /v1/eventbus/handlers/{name}/retry` re-dispatches a **previously-seen** event
+directly, with **zero upstream change**. The bus remembers the last payload per
+processed event (bounded by, and persisted alongside, the dedup window — so it
+survives a restart) and replays it, **bypassing dedup** for that one dispatch.
+
+```jsonc
+// select the event by exactly one of (precedence: event_id → key → subject):
+{ "key": "issue-6" }              // the Keyed policy key
+{ "event_id": "gh-issue-6-abc" }  // the exact Event.ID
+{ "subject": "6" }                // most recent stored event with that Subject
+
+// optional: force a brand-new session instead of reusing the bound one
+{ "key": "issue-6", "fresh_session": true }
+```
+
+- **Session reuse.** Default: a Keyed handler reuses its bound session if it is
+  still alive, else creates a new one (a *terminated* session is replaced with no
+  flag needed). `fresh_session: true` resets the binding so a new session is
+  always created.
+- **Response** mirrors the webhook path — `{"results": [DispatchResult…]}` with the
+  resolved `session_id`(s).
+- **Errors.** Unknown handler or no stored event for the target → `404`; a request
+  that selects nothing (no `key`/`event_id`/`subject`) → `400`.
+
+```sh
+curl -X POST http://127.0.0.1:18791/v1/eventbus/handlers/ahsir-build/retry \
+  -H "x-api-key: $CMA_API_KEY" -d '{"key":"issue-6"}'
+```
+
+This is an *operator-initiated* re-run; it complements the source poll, it does
+not replace it.
 
 ### Declarative handlers (no closures)
 

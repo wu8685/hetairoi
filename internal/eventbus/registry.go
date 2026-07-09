@@ -106,6 +106,12 @@ func (r *Registry) RemoveHandler(name string) (bool, error) {
 	return true, r.persistLocked()
 }
 
+// Retry replays a previously-seen event for a registered handler without
+// mutating upstream state. See Bus.Retry.
+func (r *Registry) Retry(handler string, target RetryTarget) ([]DispatchResult, error) {
+	return r.bus.Retry(handler, target)
+}
+
 // ListHandlers returns the current handler specs.
 func (r *Registry) ListHandlers() []HandlerSpec {
 	r.mu.Lock()

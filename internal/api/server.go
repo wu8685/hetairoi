@@ -47,6 +47,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /v1/eventbus/handlers", s.createEventHandler)
 		mux.HandleFunc("GET /v1/eventbus/handlers", s.listEventHandlers)
 		mux.HandleFunc("DELETE /v1/eventbus/handlers/{name}", s.deleteEventHandler)
+		mux.HandleFunc("POST /v1/eventbus/handlers/{name}/retry", s.retryEventHandler)
 	}
 
 	return s.auth(mux)

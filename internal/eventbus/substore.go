@@ -25,11 +25,21 @@ type subState struct {
 	Bindings map[string]string `json:"bindings"` // Keyed: key → sessionID
 	Created  []string          `json:"created"`  // Routed: sessionIDs created, oldest first
 	Seen     []seenEntry       `json:"seen"`     // dedup window, oldest first
+	Events   []storedEvent     `json:"events"`   // last-payload replay window, oldest first
 }
 
 type seenEntry struct {
 	ID   string    `json:"id"`
 	Time time.Time `json:"time"`
+}
+
+// storedEvent remembers a processed event so an operator can replay it (native
+// event-retry) without mutating the upstream. Key is the Keyed policy key (empty
+// for stateless/routed), so a retry can select by handler key as well as by
+// Event.ID or Subject.
+type storedEvent struct {
+	Key   string `json:"key,omitempty"`
+	Event Event  `json:"event"`
 }
 
 func newSubStore(dir, name string, cfg DedupConfig) (*subStore, error) {
@@ -139,6 +149,66 @@ func (s *subStore) bind(key, sessionID string) {
 	defer s.mu.Unlock()
 	s.state.Bindings[key] = sessionID
 	_ = s.persist()
+}
+
+// unbind drops a Keyed binding so the next resolve creates a fresh session
+// instead of reusing the (possibly terminated) bound one. Used by fresh_session
+// retries. A no-op if the key is unbound.
+func (s *subStore) unbind(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.state.Bindings[key]; !ok {
+		return
+	}
+	delete(s.state.Bindings, key)
+	_ = s.persist()
+}
+
+// ----- last-payload replay window -----
+
+// recordEvent remembers the payload of a processed event for later retry. It is
+// deduped by Event.ID (a repeat moves to newest) and bounded by the same window
+// size as dedup, so retryable events track the dedup window.
+func (s *subStore) recordEvent(key string, e Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, se := range s.state.Events {
+		if se.Event.ID == e.ID {
+			s.state.Events = append(s.state.Events[:i], s.state.Events[i+1:]...)
+			break
+		}
+	}
+	s.state.Events = append(s.state.Events, storedEvent{Key: key, Event: e})
+	for len(s.state.Events) > s.maxSeen {
+		s.state.Events = s.state.Events[1:]
+	}
+	_ = s.persist()
+}
+
+// lookupEvent finds the most recent stored event matching the first non-empty
+// selector, in precedence order eventID → key → subject. Returns false if no
+// selector is set or nothing matches.
+func (s *subStore) lookupEvent(key, eventID, subject string) (Event, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := len(s.state.Events) - 1; i >= 0; i-- {
+		se := s.state.Events[i]
+		switch {
+		case eventID != "":
+			if se.Event.ID == eventID {
+				return se.Event, true
+			}
+		case key != "":
+			if se.Key == key {
+				return se.Event, true
+			}
+		case subject != "":
+			if se.Event.Subject == subject {
+				return se.Event, true
+			}
+		}
+	}
+	return Event{}, false
 }
 
 // ----- Routed created list -----

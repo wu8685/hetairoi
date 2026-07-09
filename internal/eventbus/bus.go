@@ -2,10 +2,33 @@ package eventbus
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 )
+
+// Retry errors, distinguished so the control plane can map them to HTTP codes.
+var (
+	// ErrHandlerNotFound is returned when no handler with the given name is
+	// registered.
+	ErrHandlerNotFound = errors.New("eventbus: handler not found")
+	// ErrEventNotFound is returned when no stored event matches the retry target.
+	ErrEventNotFound = errors.New("eventbus: no stored event for retry target")
+	// ErrNoRetryTarget is returned when a retry request selects nothing.
+	ErrNoRetryTarget = errors.New("eventbus: retry requires key, event_id, or subject")
+)
+
+// RetryTarget selects which previously-seen event to replay for a handler. The
+// selector precedence is EventID → Key → Subject (the first non-empty wins). When
+// FreshSession is set, a Keyed handler's binding is reset so a brand-new session
+// is created instead of reusing the bound one.
+type RetryTarget struct {
+	Key          string
+	EventID      string
+	Subject      string
+	FreshSession bool
+}
 
 // Bus matches inbound events to subscriptions and drives a turn per match.
 type Bus struct {
@@ -96,6 +119,9 @@ func (b *Bus) Dispatch(e Event) []DispatchResult {
 			results = append(results, DispatchResult{Subscription: r.sub.Name, EventID: e.ID, Skipped: true})
 			continue
 		}
+		// Remember the payload so an operator can replay this event later
+		// (native event-retry) without mutating upstream state.
+		r.store.recordEvent(policyKey(r.sub, e), e)
 		sid, prompt, reused, err := b.resolve(r, e)
 		if err == nil && prompt != "" {
 			err = b.driver.SendUserMessage(sid, prompt)
@@ -112,6 +138,64 @@ func (b *Bus) Dispatch(e Event) []DispatchResult {
 		results = append(results, DispatchResult{Subscription: r.sub.Name, EventID: e.ID, SessionID: sid, Err: err})
 	}
 	return results
+}
+
+// Retry replays a previously-seen event for one handler, bypassing dedup, with
+// no change to upstream (GitHub/CodeHub) state. It resolves the last stored
+// payload matching target, optionally resets the Keyed binding (FreshSession),
+// and drives one fresh turn. It returns the resolved DispatchResult(s), or an
+// error: ErrNoRetryTarget (no selector), ErrHandlerNotFound, or ErrEventNotFound.
+func (b *Bus) Retry(handler string, target RetryTarget) ([]DispatchResult, error) {
+	if target.Key == "" && target.EventID == "" && target.Subject == "" {
+		return nil, ErrNoRetryTarget
+	}
+	b.mu.Lock()
+	var reg *registered
+	for _, r := range b.subs {
+		if r.sub.Name == handler {
+			reg = r
+			break
+		}
+	}
+	b.mu.Unlock()
+	if reg == nil {
+		return nil, ErrHandlerNotFound
+	}
+
+	e, ok := reg.store.lookupEvent(target.Key, target.EventID, target.Subject)
+	if !ok {
+		return nil, ErrEventNotFound
+	}
+
+	if target.FreshSession {
+		if p, isKeyed := reg.sub.Policy.(Keyed); isKeyed {
+			reg.store.unbind(p.Key(e))
+		}
+	}
+
+	sid, prompt, reused, err := b.resolve(reg, e)
+	if err == nil && prompt != "" {
+		err = b.driver.SendUserMessage(sid, prompt)
+		// Mirror Dispatch's recovery: a replayed turn onto a reused session whose
+		// agent registration was orphaned (scheduler restart) 404s → refresh once.
+		if err != nil && reused {
+			if newSID, rerr := b.refresh(reg, e); rerr == nil && newSID != "" {
+				sid = newSID
+				err = b.driver.SendUserMessage(sid, prompt)
+			}
+		}
+	}
+	return []DispatchResult{{Subscription: reg.sub.Name, EventID: e.ID, SessionID: sid, Err: err}}, nil
+}
+
+// policyKey returns the Keyed policy key for an event, or "" for a non-keyed
+// policy — the value recorded alongside a stored event so a retry can select by
+// handler key.
+func policyKey(sub Subscription, e Event) string {
+	if p, ok := sub.Policy.(Keyed); ok {
+		return p.Key(e)
+	}
+	return ""
 }
 
 // resolve produces the (sessionID, prompt) for one matched subscription per its
