@@ -50,7 +50,9 @@ The eventbus is `internal/eventbus`. Full spec: **[EVENTBUS-SPEC.md](EVENTBUS-SP
 
 - **Sources** produce events — poll (GitHub / CodeHub / workitem) or the inbound
   webhook (`POST /eventbus/events`). Poll sources watch from `now` on (re)start and
-  dedup by event id, so a restart never replays history.
+  dedup by event id, so a restart never replays history. Multiple sources of the same
+  kind can run at once — e.g. one GitHub source per watched repo — each polling
+  independently.
 - **Handlers** are declarative: a `match` (event type + payload predicates) → a
   `policy`. No closures, no redeploy — handlers/sources are created and torn down at
   runtime over `/v1/eventbus/{sources,handlers}`.
