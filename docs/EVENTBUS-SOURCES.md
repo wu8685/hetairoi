@@ -128,6 +128,76 @@ only on activity *after* startup — a restart never replays history.
 See [`tools/DEV-LOOP-PLAYBOOK.md`](../tools/DEV-LOOP-PLAYBOOK.md) (+ `tools/setup-dev-loop.py`,
 `tools/ui-verify.py`) for the full agent/handler formation this source drives.
 
+### `exec` source — pluggable, code-free sources
+
+The built-ins above each needed a Go `FetchFunc` + a `case` in `buildFetch`. `exec`
+removes that: it is a **generic** source that shells out to any command every
+`interval` and reads a JSON array of events from its **stdout**. A new upstream is
+now a *script + a POST*, never a recompile.
+
+The division of responsibility is the same as every source — the plugin just owns
+the fetch:
+
+- **Plugin owns**: how to talk to the upstream, and — critically — **encoding the
+  mutable version into `id`** (`pr-<iid>-<sha>`, `prcomment-<iid>-<maxCommentId>`).
+  That is the whole basis of *fire once per change*, since the bus dedups by `id`.
+- **hetairoi owns**: interval scheduling, dedup, handler routing, `_registry.json`
+  persistence — unchanged. It fills `source` and `time` on each emitted event.
+
+| field        | meaning                                                          |
+|--------------|------------------------------------------------------------------|
+| `command`    | argv, e.g. `["python3","/opt/het/pr_comment.py","--project","org/repo"]` (required) |
+| `env`        | extra env vars (`{"no_proxy":"*"}`) merged over the inherited environment |
+| `interval`   | Go duration, default `30s`                                       |
+| `event_type` | default `Event.Type` for events that omit their own `type`       |
+
+**Spec:**
+```jsonc
+{
+  "name": "pr-comments",
+  "type": "exec",
+  "interval": "60s",
+  "command": ["python3", "/opt/hetairoi/sources/pr_comment.py",
+              "--project", "org/repo", "--author", "@me"],
+  "env": { "no_proxy": "*" },
+  "event_type": "pr.comment"
+}
+```
+
+**Plugin stdout — a JSON array of events** (`id` required; `type` falls back to the
+spec's `event_type`; `subject`/`payload` are the routing key + body handlers match
+and template over):
+```json
+[
+  {"id":"prcomment-3196-213601693","type":"pr.comment","subject":"3196",
+   "payload":{"iid":3196,"project":"org/repo","comment_note":"..."}}
+]
+```
+
+**Environment the plugin sees.** In addition to the inherited environment and any
+`env` from the spec, hetairoi injects:
+
+| var           | meaning                                                            |
+|---------------|--------------------------------------------------------------------|
+| `HET_PROTOCOL`| event-contract version (currently `1`) — gate your output on it     |
+| `HET_SCRATCH` | a per-source scratch dir (also the command's working dir) — persist a cursor here for stateful sources (github's `since`); stateless sources (the codehub re-emit-all pattern) need nothing |
+
+**Failure handling** mirrors the built-in pollers: a non-zero exit or malformed
+JSON is returned as a fetch error (logged, dispatches nothing); an entry with no
+`id` is skipped (no stable dedup identity).
+
+**Trivially testable.** A plugin is a script you can run by hand —
+`python3 pr_comment.py … | jq` — without booting hetairoi.
+
+> **Security.** `exec` runs an arbitrary command with hetairoi's privileges.
+> Acceptable for a local, single-user tool behind a loopback control plane, but
+> source specs must come from a **trusted operator**. The event JSON
+> (`id`/`type`/`subject`/`payload`) is a public interface — keep it minimal and
+> version it via `HET_PROTOCOL`.
+
+A minimal reference plugin lives at
+[`tools/sources/example_exec_source.py`](../tools/sources/example_exec_source.py).
+
 ## Dynamic control plane
 
 | method + path                       | body / effect                          |

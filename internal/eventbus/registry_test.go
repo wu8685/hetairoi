@@ -103,13 +103,13 @@ func TestRegistry_RebuildFromDisk(t *testing.T) {
 }
 
 func TestBuildFetch(t *testing.T) {
-	if _, err := buildFetch(SourceSpec{Type: "codehub-pr", Project: "ns/proj"}); err != nil {
+	if _, err := buildFetch(SourceSpec{Type: "codehub-pr", Project: "ns/proj"}, t.TempDir()); err != nil {
 		t.Errorf("valid codehub-pr: %v", err)
 	}
-	if _, err := buildFetch(SourceSpec{Type: "codehub-pr"}); err == nil {
+	if _, err := buildFetch(SourceSpec{Type: "codehub-pr"}, t.TempDir()); err == nil {
 		t.Error("codehub-pr without project should error")
 	}
-	if _, err := buildFetch(SourceSpec{Type: "what"}); err == nil {
+	if _, err := buildFetch(SourceSpec{Type: "what"}, t.TempDir()); err == nil {
 		t.Error("unknown type should error")
 	}
 }
