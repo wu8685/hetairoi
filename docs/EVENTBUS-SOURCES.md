@@ -87,13 +87,16 @@ type has its own dedup key so a transition fires exactly once:
 | `pr.review`| `gh-pr-<n>-review-<comment>` | a reviewer verdict comment appeared |
 
 `Subject` = the issue/PR number. Payload carries the routing fields handlers match
-on with `payload_equals`: `has_agent_build_label`, `is_agent_pr` (head branch
-starts with `agent_prefix`), `issue_ref` (parsed from the PR body's `Fixes #N`),
-`review_verdict` (`approved`/`changes`, parsed from the verdict marker).
+on with `payload_equals`: `authorized` (the approval gate — **build handlers must
+match this, not the raw label**, see the trust boundary below), `has_agent_build_label`,
+`is_agent_pr` (head branch starts with `agent_prefix`), `issue_ref` (parsed from the
+PR body's `Fixes #N`), `review_verdict` (`approved`/`changes`, parsed from the
+verdict marker).
 
 | field               | meaning                                                          |
 |---------------------|------------------------------------------------------------------|
 | `repo`              | `owner/name` (required)                                          |
+| `owner`             | trusted owner login; default: the owner segment of `repo`        |
 | `kinds`             | `both` (default) \| `issue` \| `pr`                              |
 | `state`             | `open` (default) \| `closed` \| `all`                           |
 | `allow_numbers`     | if set, only these numbers are emitted (blast-radius guard)      |
@@ -101,11 +104,41 @@ starts with `agent_prefix`), `issue_ref` (parsed from the PR body's `Fixes #N`),
 | `token_file`        | path to a file holding the PAT (else `GITHUB_TOKEN`/`GH_TOKEN`)  |
 | `build_label`       | label that opts an issue into the loop, default `agent-build`    |
 | `agent_prefix`      | head-branch prefix marking a loop PR, default `agent/`           |
+| `approve_marker`    | owner approval marker for a non-owner issue, default `<!-- cma-approve -->` |
 | `bot_marker`        | issue-comment self-trigger marker, default `<!-- cma-agent -->`  |
 | `issue_event_type`  | default `issue`                                                  |
 | `push_event_type`   | default `pr.push`                                                |
 | `review_event_type` | default `pr.review`                                              |
 | `api_base`          | default `https://api.github.com` (override for GHE / tests)      |
+
+**Trust boundary — issue ingestion is an auto-execute attack surface.** The label→
+code→PR loop runs untended, so any account that can shape an issue's content, its
+label, or a comment could try to steer an agent. The source enforces an
+**owner-only** trust boundary at ingestion, keyed off the `owner` login:
+
+- **Owner-only content.** Only comments authored by `owner` are surfaced to agents
+  (`latest_comment`). A non-owner comment is never fed to an agent and never becomes
+  the trigger — it is logged as a probe and dropped. The source only reads issue/PR
+  text over the REST API; it **never downloads or executes** attachments or links in
+  any comment.
+- **Approval gate.** The `agent-build` label is a *candidate*, not authorization.
+  The payload's **`authorized`** is `true` only when the label is present **and** the
+  intent is owner-backed — the issue is authored by `owner`, or `owner` posted an
+  `approve_marker` comment. A label driven onto a non-owner issue yields
+  `authorized=false` (logged). **Build handlers must gate on `authorized: "true"`**,
+  not on `has_agent_build_label`, so a label alone cannot start work.
+- **Owner-only review verdicts.** A `pr.review` event is emitted only for a verdict
+  comment authored by `owner`; a stranger's `approved`/`changes` comment is ignored
+  (logged), even if it is newer than the owner's verdict.
+
+Every rejection is logged (`eventbus: github <repo>: …`) so a probe of the
+auto-execute entry point is visible.
+
+> **Poll-source limitation.** Because this is a *poller*, it never sees the
+> `sender.login` of a GitHub `labeled` webhook event, so it cannot tell *who*
+> applied the label. Authorization is therefore derived from verifiable
+> owner-authored content (issue author, or an owner `approve_marker` comment) rather
+> than the labeler's identity.
 
 **Auth.** A token is **required** (read from `token_file`, never stored in the
 persisted spec): unauthenticated polling is capped at 60 req/hr, and the source

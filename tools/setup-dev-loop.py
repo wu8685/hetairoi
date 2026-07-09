@@ -171,7 +171,11 @@ either the approved or changes marker."""
 
 h1 = call("POST", "/v1/eventbus/handlers", {
     "name": "ahsir-build",
-    "match": {"type": "issue", "payload_equals": {"has_agent_build_label": "true"}},
+    # Gate on `authorized`, not the raw label: the source sets it true only when the
+    # agent-build label is backed by the owner (owner-authored issue, or an owner
+    # `<!-- cma-approve -->` comment). A label alone never starts work. See the trust
+    # boundary in docs/EVENTBUS-SOURCES.md.
+    "match": {"type": "issue", "payload_equals": {"authorized": "true"}},
     "policy": {"kind": "keyed", "agent_id": coder["id"], "env_id": env["id"],
                "key_template": "issue-{{.subject}}", "prompt_template": BUILD_PROMPT}})
 print("handler:", h1["name"])

@@ -23,7 +23,9 @@ gotchas below.
   that the PR adds tests exercising the new/changed behavior (measured via `go test -coverprofile`
   + `go tool cover -func`); missing tests on new logic ⇒ `changes` verdict. Pure-UI changes are
   flagged as out-of-headless-scope for a human / Playwright ui-verify.
-- **handlers** (keyed): `ahsir-build` (`type=issue` + `has_agent_build_label=true` → coder, key `issue-{{.subject}}`),
+- **handlers** (keyed): `ahsir-build` (`type=issue` + `authorized=true` → coder, key `issue-{{.subject}}`;
+  `authorized` is the owner-backed approval gate — an `agent-build` label alone does NOT start work,
+  see the trust boundary in `docs/EVENTBUS-SOURCES.md`),
   `ahsir-review` (`type=pr.push` + `is_agent_pr=true` → reviewer, key `pr-{{.subject}}`),
   `ahsir-fix` (`type=pr.review` + `review_verdict=changes` → coder, key `issue-{{.payload.issue_ref}}` — same session as build).
 - **source** `gh-ahsir-loop` (`type=github`, repo, `kinds=both`, `interval=2m`, `token_file=~/.cma-stack/github-token`).
@@ -36,7 +38,8 @@ gotchas below.
 #    create+delete a temp branch ref via the API (Contents:write); Issues+PR write also needed.
 # 2. create the formation (edit REPO at top of the script for a different repo):
 python3 ~/.cma-stack/tools/setup-dev-loop.py
-# 3. kick off: open an issue on the repo with the `agent-build` label. The 2m poll picks it up.
+# 3. kick off: as the repo OWNER, open an issue with the `agent-build` label (or, on a
+#    non-owner issue, post an owner `<!-- cma-approve -->` comment). The 2m poll picks it up.
 # 4. watch: GitHub PR list, ahsir UI :19801, or `tail -f ~/.cma-stack/logs/ahsir.err`.
 ```
 Pause the loop (keeps handlers/agents): `curl -s --noproxy '*' -X DELETE http://127.0.0.1:18791/v1/eventbus/sources/gh-ahsir-loop`

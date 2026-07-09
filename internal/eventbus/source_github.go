@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -28,24 +29,44 @@ import (
 // author-identity check: the coder only ever produces pr.push, the reviewer only
 // ever produces pr.review, so routing on the event TYPE (plus review_verdict)
 // never self-triggers. Payload carries the routing fields handlers match on:
-// has_agent_build_label, is_agent_pr, review_verdict, issue_ref.
+// has_agent_build_label, authorized, is_agent_pr, review_verdict, issue_ref.
+//
+// # Trust boundary (issue ingestion is an auto-execute attack surface)
+//
+// The label→code→PR loop runs untended, so any path that shapes issue content,
+// labels, or comments can try to steer an agent. The source enforces a hard
+// trust boundary at ingestion so downstream agents only ever see owner-authored
+// instructions:
+//
+//   - owner-only content: only comments authored by the repo owner are surfaced
+//     as instructions (latest_comment); a non-owner comment is never fed to an
+//     agent (and never becomes the trigger), it is only logged as a probe.
+//   - approval gate: the agent-build label is a CANDIDATE, not authorization.
+//     `authorized` is true only when the label is present AND the intent is
+//     owner-backed — the issue is owner-authored, or an owner posted an explicit
+//     approval comment. A non-owner-driven label yields authorized=false, logged.
+//   - owner-only review verdicts: a pr.review event is emitted only for a verdict
+//     comment authored by the owner; a non-owner verdict is ignored and logged.
 //
 // It keeps state across ticks (the incremental `since` window, resolved bot
 // login), so it MUST be used via a pointer — buildFetch returns (&src).Fetch.
 type GitHubSource struct {
-	Repo         string       // "owner/name" (required)
-	Token        string       // GitHub PAT; required (auth + rate limit + GET /user)
-	APIBase      string       // default "https://api.github.com" (override for tests / GHE)
-	State        string       // issue/PR state filter: open | closed | all (default "open")
-	Kinds        string       // "both" | "issue" | "pr" (default "both")
-	IssueType    string       // emitted type for issue events (default "issue")
-	PushType     string       // emitted type for PR-commit events (default "pr.push")
-	ReviewType   string       // emitted type for PR-review events (default "pr.review")
-	BuildLabel   string       // label that opts an issue into the loop (default "agent-build")
-	AgentPrefix  string       // head-branch prefix marking a loop PR (default "agent/")
-	AllowNumbers map[int]bool // if non-empty, only these issue/PR numbers are emitted
-	BotMarker    string       // hidden marker the agent stamps on issue comments (default "<!-- cma-agent -->")
-	HTTP         *http.Client
+	Repo          string       // "owner/name" (required)
+	Owner         string       // trusted repo owner login; defaults to the owner segment of Repo
+	Token         string       // GitHub PAT; required (auth + rate limit + GET /user)
+	APIBase       string       // default "https://api.github.com" (override for tests / GHE)
+	State         string       // issue/PR state filter: open | closed | all (default "open")
+	Kinds         string       // "both" | "issue" | "pr" (default "both")
+	IssueType     string       // emitted type for issue events (default "issue")
+	PushType      string       // emitted type for PR-commit events (default "pr.push")
+	ReviewType    string       // emitted type for PR-review events (default "pr.review")
+	BuildLabel    string       // label that opts an issue into the loop (default "agent-build")
+	AgentPrefix   string       // head-branch prefix marking a loop PR (default "agent/")
+	ApproveMarker string       // owner approval marker authorizing a non-owner issue (default "<!-- cma-approve -->")
+	AllowNumbers  map[int]bool // if non-empty, only these issue/PR numbers are emitted
+	BotMarker     string       // hidden marker the agent stamps on issue comments (default "<!-- cma-agent -->")
+	HTTP          *http.Client
+	Logf          func(string, ...any) // trust-boundary trace sink; defaults to log.Printf
 
 	botLogin string    // token owner's login, resolved lazily on first Fetch (payload only)
 	meTried  bool      // guard so a failed /user lookup isn't retried every tick
@@ -150,9 +171,32 @@ func (s *GitHubSource) state() string {
 func (s *GitHubSource) issueType() string   { return orDefault(s.IssueType, "issue") }
 func (s *GitHubSource) pushType() string    { return orDefault(s.PushType, "pr.push") }
 func (s *GitHubSource) reviewType() string  { return orDefault(s.ReviewType, "pr.review") }
-func (s *GitHubSource) buildLabel() string  { return orDefault(s.BuildLabel, "agent-build") }
-func (s *GitHubSource) agentPrefix() string { return orDefault(s.AgentPrefix, "agent/") }
-func (s *GitHubSource) botMarker() string   { return orDefault(s.BotMarker, "<!-- cma-agent -->") }
+func (s *GitHubSource) buildLabel() string    { return orDefault(s.BuildLabel, "agent-build") }
+func (s *GitHubSource) agentPrefix() string   { return orDefault(s.AgentPrefix, "agent/") }
+func (s *GitHubSource) botMarker() string     { return orDefault(s.BotMarker, "<!-- cma-agent -->") }
+func (s *GitHubSource) approveMarker() string { return orDefault(s.ApproveMarker, "<!-- cma-approve -->") }
+
+// owner is the trusted author login. It defaults to the owner segment of Repo
+// ("owner/name" → "owner"), so the common case needs no extra config.
+func (s *GitHubSource) owner() string {
+	if s.Owner != "" {
+		return s.Owner
+	}
+	if i := strings.IndexByte(s.Repo, '/'); i > 0 {
+		return s.Repo[:i]
+	}
+	return s.Repo
+}
+
+// logf leaves a trace when a trust-boundary check rejects something, so a probe
+// of the auto-execute entry point is visible. Tests inject Logf to capture it.
+func (s *GitHubSource) logf(format string, args ...any) {
+	if s.Logf != nil {
+		s.Logf(format, args...)
+		return
+	}
+	log.Printf("eventbus: github %s: "+format, append([]any{s.Repo}, args...)...)
+}
 
 func orDefault(v, def string) string {
 	if v != "" {
@@ -222,25 +266,60 @@ func (s *GitHubSource) Fetch(ctx context.Context) ([]Event, error) {
 	return out, nil
 }
 
-// issueEvent builds the `issue` event for a non-PR item, applying the marker
-// self-trigger guard (skip when the newest comment is the agent's own reply).
+// issueEvent builds the `issue` event for a non-PR item. It enforces the trust
+// boundary: only the repo owner's comments count as instructions (a non-owner
+// comment is never surfaced and never becomes the trigger), the agent-build
+// label alone is not authorization (see authorized), and the marker self-trigger
+// guard still skips when the newest comment is the agent's own reply.
 func (s *GitHubSource) issueEvent(ctx context.Context, it ghIssue, t time.Time) (Event, bool, error) {
+	owner := s.owner()
 	activity := it.UpdatedAt
-	var latest *ghComment
+
+	var comments []ghComment
 	if it.Comments > 0 {
-		c, err := s.latestComment(ctx, it.Number, it.Comments)
+		cs, err := s.commentsLastPage(ctx, it.Number, it.Comments)
 		if err != nil {
 			return Event{}, false, fmt.Errorf("issue %d comments: %w", it.Number, err)
 		}
-		if c != nil {
-			latest = c
-			if c.UpdatedAt.After(activity) {
-				activity = c.UpdatedAt
+		comments = cs
+	}
+
+	// newest comment overall drives the self-trigger guard; latestOwner is the
+	// newest OWNER comment, the only one trusted as an instruction / trigger.
+	var newest, latestOwner *ghComment
+	ownerApproved := false
+	for i := range comments {
+		c := &comments[i]
+		newest = c
+		if c.User.Login == owner {
+			latestOwner = c
+			if strings.Contains(c.Body, s.approveMarker()) {
+				ownerApproved = true
 			}
 		}
 	}
-	if latest != nil && strings.Contains(latest.Body, s.botMarker()) {
+
+	if newest != nil && strings.Contains(newest.Body, s.botMarker()) {
 		return Event{}, false, nil // agent's own reply is newest → don't re-trigger
+	}
+	if newest != nil && newest.User.Login != owner {
+		// A non-owner comment is untrusted: not fed to the agent, not a trigger.
+		s.logf("issue #%d: ignoring untrusted comment from %q (owner-only trust)", it.Number, newest.User.Login)
+	}
+	// Only owner-authored comments advance the activity window / dedup key, so a
+	// stranger's comment never spawns a fresh agent turn on its own.
+	if latestOwner != nil && latestOwner.UpdatedAt.After(activity) {
+		activity = latestOwner.UpdatedAt
+	}
+
+	hasBuild := hasLabel(it.Labels, s.buildLabel())
+	// Approval gate: the label is only a candidate. Authorize the build only when
+	// the intent is owner-backed — an owner-authored issue, or an owner approval
+	// comment on a non-owner issue. A non-owner-driven label is refused + logged.
+	authorized := hasBuild && (it.User.Login == owner || ownerApproved)
+	if hasBuild && !authorized {
+		s.logf("issue #%d: %q label present but unauthorized (author=%q, no owner approval) — refusing to dispatch build",
+			it.Number, s.buildLabel(), it.User.Login)
 	}
 
 	fields := map[string]any{
@@ -251,18 +330,20 @@ func (s *GitHubSource) issueEvent(ctx context.Context, it ghIssue, t time.Time) 
 		"author":                it.User.Login,
 		"url":                   it.HTMLURL,
 		"labels":                labelNames(it.Labels),
-		"has_agent_build_label": hasLabel(it.Labels, s.buildLabel()),
+		"has_agent_build_label": hasBuild,
+		"authorized":            authorized,
+		"owner":                 owner,
 		"kind":                  "issue",
 		"repo":                  s.Repo,
 		"updated_at":            it.UpdatedAt.UTC().Format(time.RFC3339),
 		"bot_login":             s.botLogin,
 		"marker":                s.botMarker(),
 	}
-	if latest != nil {
+	if latestOwner != nil {
 		fields["latest_comment"] = map[string]any{
-			"author":     latest.User.Login,
-			"body":       latest.Body,
-			"created_at": latest.CreatedAt.UTC().Format(time.RFC3339),
+			"author":     latestOwner.User.Login,
+			"body":       latestOwner.Body,
+			"created_at": latestOwner.CreatedAt.UTC().Format(time.RFC3339),
 		}
 	}
 	payload, _ := json.Marshal(fields)
@@ -319,33 +400,55 @@ func (s *GitHubSource) prEvents(ctx context.Context, it ghIssue, t time.Time) ([
 		Time:    t,
 	})
 
-	// pr.review — routed off the reviewer's latest verdict comment (see the
-	// self-approval note on the verdict markers). One event per comment id, so a
-	// new verdict fires once and an unchanged one is deduped.
+	// pr.review — routed off the OWNER's latest verdict comment (see the
+	// self-approval note on the verdict markers). Trust boundary: only an
+	// owner-authored verdict is acted on; a stranger's "approved"/"changes"
+	// comment is ignored (and logged), so it can't steer the loop. One event per
+	// comment id, so a new verdict fires once and an unchanged one is deduped.
 	if it.Comments > 0 {
-		c, err := s.latestComment(ctx, it.Number, it.Comments)
+		cs, err := s.commentsLastPage(ctx, it.Number, it.Comments)
 		if err != nil {
 			return out, fmt.Errorf("pr %d comments: %w", it.Number, err)
 		}
-		if c != nil {
-			if verdict := parseVerdict(c.Body); verdict != "" {
-				rp := withKV(base, "event", "review")
-				rp["review_verdict"] = verdict
-				rp["reviewer"] = c.User.Login
-				rp["review_body"] = c.Body
-				reviewPayload, _ := json.Marshal(rp)
-				out = append(out, Event{
-					ID:      fmt.Sprintf("gh-pr-%d-review-%d", it.Number, c.ID),
-					Type:    s.reviewType(),
-					Subject: strconv.Itoa(it.Number),
-					Payload: reviewPayload,
-					Source:  "github:" + s.Repo,
-					Time:    t,
-				})
-			}
+		owner := s.owner()
+		if c := latestOwnerVerdict(cs, owner, s.logf, it.Number); c != nil {
+			verdict := parseVerdict(c.Body)
+			rp := withKV(base, "event", "review")
+			rp["review_verdict"] = verdict
+			rp["reviewer"] = c.User.Login
+			rp["review_body"] = c.Body
+			reviewPayload, _ := json.Marshal(rp)
+			out = append(out, Event{
+				ID:      fmt.Sprintf("gh-pr-%d-review-%d", it.Number, c.ID),
+				Type:    s.reviewType(),
+				Subject: strconv.Itoa(it.Number),
+				Payload: reviewPayload,
+				Source:  "github:" + s.Repo,
+				Time:    t,
+			})
 		}
 	}
 	return out, nil
+}
+
+// latestOwnerVerdict returns the newest OWNER-authored comment carrying a review
+// verdict, scanning newest-first. A verdict comment from a non-owner is logged
+// and skipped — it must never route the loop.
+func latestOwnerVerdict(cs []ghComment, owner string, logf func(string, ...any), number int) *ghComment {
+	for i := len(cs) - 1; i >= 0; i-- {
+		c := &cs[i]
+		if parseVerdict(c.Body) == "" {
+			continue
+		}
+		if c.User.Login != owner {
+			if logf != nil {
+				logf("PR #%d: ignoring review verdict from non-owner %q (owner-only trust)", number, c.User.Login)
+			}
+			continue
+		}
+		return c
+	}
+	return nil
 }
 
 func (s *GitHubSource) listIssues(ctx context.Context, since time.Time) ([]ghIssue, error) {
@@ -362,10 +465,12 @@ func (s *GitHubSource) listIssues(ctx context.Context, since time.Time) ([]ghIss
 	return issues, err
 }
 
-// latestComment returns the newest comment on an issue. Issue comments come back
-// ascending (oldest first) with no sort option, so we jump straight to the last
-// page using the known total count and take its last element — one request.
-func (s *GitHubSource) latestComment(ctx context.Context, number, count int) (*ghComment, error) {
+// commentsLastPage returns the newest page of comments on an issue/PR (ascending,
+// oldest-first within the page). Issue comments come back ascending with no sort
+// option, so we jump straight to the last page using the known total count — one
+// request. Callers scan it newest-first for the marker guard, the latest owner
+// comment, and the latest owner verdict.
+func (s *GitHubSource) commentsLastPage(ctx context.Context, number, count int) ([]ghComment, error) {
 	if count <= 0 {
 		return nil, nil
 	}
@@ -375,10 +480,7 @@ func (s *GitHubSource) latestComment(ctx context.Context, number, count int) (*g
 	if err := s.getJSON(ctx, path, &cs); err != nil {
 		return nil, err
 	}
-	if len(cs) == 0 {
-		return nil, nil
-	}
-	return &cs[len(cs)-1], nil
+	return cs, nil
 }
 
 func (s *GitHubSource) pull(ctx context.Context, number int) (*ghPull, error) {

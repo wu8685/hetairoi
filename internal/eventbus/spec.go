@@ -39,6 +39,7 @@ type SourceSpec struct {
 
 	// GitHub fields (Type == "github"). State is reused (open|closed|all).
 	Repo            string `json:"repo,omitempty"`              // "owner/name"
+	Owner           string `json:"owner,omitempty"`             // trusted owner login (default: owner segment of repo)
 	Kinds           string `json:"kinds,omitempty"`             // both | issue | pr
 	AllowNumbers    []int  `json:"allow_numbers,omitempty"`     // blast-radius guard
 	TokenFile       string `json:"token_file,omitempty"`        // path to the PAT file (secret stays out of the spec)
@@ -48,6 +49,7 @@ type SourceSpec struct {
 	ReviewEventType string `json:"review_event_type,omitempty"` // emitted type for PR reviews (default "pr.review")
 	BuildLabel      string `json:"build_label,omitempty"`       // label opting an issue into the loop (default "agent-build")
 	AgentPrefix     string `json:"agent_prefix,omitempty"`      // head-branch prefix marking a loop PR (default "agent/")
+	ApproveMarker   string `json:"approve_marker,omitempty"`    // owner approval marker for a non-owner issue (default "<!-- cma-approve -->")
 	BotMarker       string `json:"bot_marker,omitempty"`        // issue-comment self-trigger marker (default "<!-- cma-agent -->")
 
 	// Exec fields (Type == "exec"). The generic pluggable source: hetairoi runs

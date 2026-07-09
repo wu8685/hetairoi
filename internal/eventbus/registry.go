@@ -230,19 +230,21 @@ func buildFetch(spec SourceSpec, dir string) (FetchFunc, error) {
 			allow[n] = true
 		}
 		src := &GitHubSource{
-			Repo:         spec.Repo,
-			Token:        token,
-			APIBase:      spec.APIBase,
-			State:        spec.State,
-			Kinds:        spec.Kinds,
-			IssueType:    spec.IssueEventType,
-			PushType:     spec.PushEventType,
-			ReviewType:   spec.ReviewEventType,
-			BuildLabel:   spec.BuildLabel,
-			AgentPrefix:  spec.AgentPrefix,
-			BotMarker:    spec.BotMarker,
-			AllowNumbers: allow,
-			since:        time.Now(), // don't replay history on (re)start; act on new activity only
+			Repo:          spec.Repo,
+			Owner:         spec.Owner,
+			Token:         token,
+			APIBase:       spec.APIBase,
+			State:         spec.State,
+			Kinds:         spec.Kinds,
+			IssueType:     spec.IssueEventType,
+			PushType:      spec.PushEventType,
+			ReviewType:    spec.ReviewEventType,
+			BuildLabel:    spec.BuildLabel,
+			AgentPrefix:   spec.AgentPrefix,
+			ApproveMarker: spec.ApproveMarker,
+			BotMarker:     spec.BotMarker,
+			AllowNumbers:  allow,
+			since:         time.Now(), // don't replay history on (re)start; act on new activity only
 		}
 		return src.Fetch, nil
 	case "exec":
