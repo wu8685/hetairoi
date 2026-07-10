@@ -37,3 +37,5 @@ func env(k, def string) string {
 	}
 	return def
 }
+
+// This file defines Hetairoi's runtime configuration.
