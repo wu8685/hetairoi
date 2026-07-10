@@ -15,7 +15,9 @@ agent picked it up, did the work, and reported back."
 ## What you get
 
 - **Watch anything.** Built-in sources poll GitHub / CodeHub / work-item queues;
-  a webhook lets anything else push events in.
+  a webhook lets anything else push events in; and a pluggable `exec` source turns
+  *any script that prints JSON* into a source — connect a new upstream with a file
+  and a POST, no recompile.
 - **Route by rule, not by code.** Declarative handlers match an event and hand it
   to a policy — start a fresh session, reuse a keyed one, or let a router agent
   decide — no redeploy to change the wiring.
