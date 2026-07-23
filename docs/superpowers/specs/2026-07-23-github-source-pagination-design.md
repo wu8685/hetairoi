@@ -1,6 +1,6 @@
 # GitHub Source Lossless Pagination Design
 
-> Status: design approved 2026-07-23; written spec pending user review
+> Status: approved 2026-07-24
 > Target: `internal/eventbus` in Hetairoi
 > Development method: SDD → user approval → TDD → minimal implementation
 
