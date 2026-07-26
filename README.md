@@ -1,5 +1,8 @@
 # Hetairoi
 
+[![Go version](https://img.shields.io/github/go-mod/go-version/wu8685/hetairoi)](https://github.com/wu8685/hetairoi/blob/main/go.mod)
+[![Last commit](https://img.shields.io/github/last-commit/wu8685/hetairoi)](https://github.com/wu8685/hetairoi/commits/main)
+
 **Connect real-world events to your agent fleet.** Hetairoi watches the sources
 you care about — GitHub issues and PRs, code-review queues, work items — and, when
 something happens, **summons the right agent to act on it**. Autonomously.
